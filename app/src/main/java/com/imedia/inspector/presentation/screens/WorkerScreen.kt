@@ -51,7 +51,9 @@ fun WorkerScreen(
     onLogout: () -> Unit,
     onManualSync: () -> Unit,
     isAutoUpload: Boolean,
-    onToggleAutoUpload: (Boolean) -> Unit
+    onToggleAutoUpload: (Boolean) -> Unit,
+    isGpsEnabled: Boolean,
+    onToggleGps: (Boolean) -> Unit
 ) {
     val pagerState = rememberPagerState(initialPage = selectedTab) { 3 }
 
@@ -89,6 +91,7 @@ fun WorkerScreen(
                         
                         var showMenu by remember { mutableStateOf(false) }
                         var showAutoUploadConfirm by remember { mutableStateOf(false) }
+                        var showGpsConfirm by remember { mutableStateOf(false) }
 
                         if (showAutoUploadConfirm) {
                             AlertDialog(
@@ -103,6 +106,23 @@ fun WorkerScreen(
                                 },
                                 dismissButton = {
                                     TextButton(onClick = { showAutoUploadConfirm = false }) { Text("Отмена") }
+                                }
+                            )
+                        }
+
+                        if (showGpsConfirm) {
+                            AlertDialog(
+                                onDismissRequest = { showGpsConfirm = false },
+                                title = { Text("Записывать GPS?") },
+                                text = { Text("При включении этой функции приложение будет требовать включения GPS и сохранять координаты места съемки в Битрикс24.") },
+                                confirmButton = {
+                                    Button(onClick = {
+                                        onToggleGps(true)
+                                        showGpsConfirm = false
+                                    }) { Text("Включить") }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showGpsConfirm = false }) { Text("Отмена") }
                                 }
                             )
                         }
@@ -123,6 +143,24 @@ fun WorkerScreen(
                                                 onToggleAutoUpload(false)
                                             }
                                             showMenu = false 
+                                        })
+                                    }
+                                },
+                                onClick = { }
+                            )
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Записывать GPS")
+                                        Spacer(Modifier.weight(1f))
+                                        Switch(checked = isGpsEnabled, onCheckedChange = { checked ->
+                                            if (checked) {
+                                                showGpsConfirm = true
+                                            } else {
+                                                onToggleGps(false)
+                                            }
+                                            showMenu = false
                                         })
                                     }
                                 },
@@ -188,6 +226,7 @@ fun WorkerScreen(
                 padding = padding,
                 context = context,
                 address = selected,
+                isGpsEnabled = isGpsEnabled,
                 onSkipAddress = onSkipAddress,
                 onPhotoTaken = onPhotoTaken
             )
@@ -234,10 +273,10 @@ private fun WorkerListContent(
             ) {
                 items(addresses.size) { index ->
                     val item = addresses[index]
-                    val isLocked = selectedTab == 0 && index > 0
+                    // Для ремонтников убираем блокировку очереди (любой адрес доступен всегда)
+                    val isLocked = false
                     WorkerAddressCard(
                         item = item, 
-                        isLocked = isLocked,
                         showPendingStatus = selectedTab == 2,
                         onClick = { onSelect(item) }
                     )
@@ -250,7 +289,6 @@ private fun WorkerListContent(
 @Composable
 private fun WorkerAddressCard(
     item: AddressItem, 
-    isLocked: Boolean = false, 
     showPendingStatus: Boolean = true,
     onClick: () -> Unit
 ) {
@@ -259,10 +297,9 @@ private fun WorkerAddressCard(
     val isUploaded = item.status == AddressStatus.REPAIR_DONE && !item.isPendingSync
 
     ElevatedCard(
-        onClick = { if (!isLocked) onClick() },
+        onClick = onClick,
         modifier = Modifier
-            .fillMaxWidth()
-            .alpha(if (isLocked) 0.5f else 1f),
+            .fillMaxWidth(),
         colors = when {
             isUploaded -> CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
             isPending -> CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
@@ -277,14 +314,12 @@ private fun WorkerAddressCard(
                 imageVector = when {
                     isUploaded -> Icons.Default.CheckCircle
                     isPending -> Icons.Default.CloudUpload
-                    isLocked -> Icons.Default.Lock
                     else -> Icons.Default.Build
                 },
                 contentDescription = null,
                 tint = when {
                     isUploaded -> MaterialTheme.colorScheme.primary
                     isPending -> MaterialTheme.colorScheme.secondary
-                    isLocked -> MaterialTheme.colorScheme.outline
                     else -> MaterialTheme.colorScheme.outline
                 }
             )
@@ -297,14 +332,10 @@ private fun WorkerAddressCard(
                     color = when {
                         isUploaded -> MaterialTheme.colorScheme.onPrimaryContainer
                         isPending -> MaterialTheme.colorScheme.onSecondaryContainer
-                        isLocked -> MaterialTheme.colorScheme.outline
                         else -> MaterialTheme.colorScheme.onSurface
                     }
                 )
                 when {
-                    isLocked -> {
-                        Text("Выполняйте задачи по очереди", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-                    }
                     isUploaded -> {
                         Text("Ремонт подтвержден (в Битриксе)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                     }
@@ -325,6 +356,7 @@ private fun WorkerDetailContent(
     padding: PaddingValues,
     context: Context,
     address: AddressItem,
+    isGpsEnabled: Boolean,
     onSkipAddress: () -> Unit,
     onPhotoTaken: (File) -> Unit
 ) {
@@ -394,6 +426,7 @@ private fun WorkerDetailContent(
             CameraCaptureButton(
                 context = context,
                 label = "Сфотографировать готовый ремонт",
+                isGpsRequired = isGpsEnabled,
                 onPhotoTaken = onPhotoTaken
             )
             

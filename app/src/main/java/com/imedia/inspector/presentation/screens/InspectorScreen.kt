@@ -57,7 +57,9 @@ fun InspectorScreen(
     onLogout: () -> Unit,
     onManualSync: () -> Unit,
     isAutoUpload: Boolean,
-    onToggleAutoUpload: (Boolean) -> Unit
+    onToggleAutoUpload: (Boolean) -> Unit,
+    isGpsEnabled: Boolean,
+    onToggleGps: (Boolean) -> Unit
 ) {
     val pagerState = rememberPagerState(initialPage = selectedTab) { 4 }
 
@@ -97,6 +99,7 @@ fun InspectorScreen(
                         
                         var showMenu by remember { mutableStateOf(false) }
                         var showAutoUploadConfirm by remember { mutableStateOf(false) }
+                        var showGpsConfirm by remember { mutableStateOf(false) }
 
                         if (showAutoUploadConfirm) {
                             AlertDialog(
@@ -111,6 +114,23 @@ fun InspectorScreen(
                                 },
                                 dismissButton = {
                                     TextButton(onClick = { showAutoUploadConfirm = false }) { Text("Отмена") }
+                                }
+                            )
+                        }
+
+                        if (showGpsConfirm) {
+                            AlertDialog(
+                                onDismissRequest = { showGpsConfirm = false },
+                                title = { Text("Записывать GPS?") },
+                                text = { Text("При включении этой функции приложение будет требовать включения GPS и сохранять координаты места съемки в Битрикс24.") },
+                                confirmButton = {
+                                    Button(onClick = {
+                                        onToggleGps(true)
+                                        showGpsConfirm = false
+                                    }) { Text("Включить") }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showGpsConfirm = false }) { Text("Отмена") }
                                 }
                             )
                         }
@@ -131,6 +151,24 @@ fun InspectorScreen(
                                                 onToggleAutoUpload(false)
                                             }
                                             showMenu = false 
+                                        })
+                                    }
+                                },
+                                onClick = { }
+                            )
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Записывать GPS")
+                                        Spacer(Modifier.weight(1f))
+                                        Switch(checked = isGpsEnabled, onCheckedChange = { checked ->
+                                            if (checked) {
+                                                showGpsConfirm = true
+                                            } else {
+                                                onToggleGps(false)
+                                            }
+                                            showMenu = false
                                         })
                                     }
                                 },
@@ -204,6 +242,7 @@ fun InspectorScreen(
                 padding = padding,
                 context = context,
                 address = selected,
+                isGpsEnabled = isGpsEnabled,
                 onOpenSkipChooser = onOpenSkipChooser,
                 onPhotoTaken = onPhotoTaken
             )
@@ -364,6 +403,7 @@ private fun AddressDetailContent(
     padding: PaddingValues,
     context: Context,
     address: AddressItem,
+    isGpsEnabled: Boolean,
     onOpenSkipChooser: () -> Unit,
     onPhotoTaken: (File) -> Unit
 ) {
@@ -422,6 +462,7 @@ private fun AddressDetailContent(
             CameraCaptureButton(
                 context = context,
                 label = "Сфотографировать и отправить",
+                isGpsRequired = isGpsEnabled,
                 onPhotoTaken = onPhotoTaken
             )
             

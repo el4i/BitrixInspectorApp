@@ -51,6 +51,7 @@ import java.io.File
 fun CameraCaptureButton(
     context: Context,
     label: String = "Сделать фото",
+    isGpsRequired: Boolean = false,
     onPhotoTaken: (File) -> Unit
 ) {
     var pendingFile by remember { mutableStateOf<File?>(null) }
@@ -83,6 +84,14 @@ fun CameraCaptureButton(
     }
 
     fun launchCameraWithCheck() {
+        if (!isGpsRequired) {
+            val file = createTempImageFile(context)
+            pendingFile = file
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            launcher.launch(uri)
+            return
+        }
+
         val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         val isGpsEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
                 locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
@@ -123,18 +132,20 @@ fun CameraCaptureButton(
         Button(
             onClick = {
                 val hasCameraPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-                val hasLocationPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                
+                val hasLocationPermission = if (isGpsRequired) {
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                } else true
 
                 if (hasCameraPermission && hasLocationPermission) {
                     launchCameraWithCheck()
                 } else {
-                    permissionLauncher.launch(
-                        arrayOf(
-                            Manifest.permission.CAMERA,
-                            Manifest.permission.ACCESS_FINE_LOCATION,
-                            Manifest.permission.ACCESS_COARSE_LOCATION
-                        )
-                    )
+                    val permissions = mutableListOf(Manifest.permission.CAMERA)
+                    if (isGpsRequired) {
+                        permissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
+                        permissions.add(Manifest.permission.ACCESS_COARSE_LOCATION)
+                    }
+                    permissionLauncher.launch(permissions.toTypedArray())
                 }
             },
             modifier = Modifier.fillMaxWidth()

@@ -42,6 +42,9 @@ class MainViewModel(
     private val _isAutoUpload = MutableStateFlow(sessionManager.isAutoUploadEnabled())
     val isAutoUpload: StateFlow<Boolean> = _isAutoUpload.asStateFlow()
 
+    private val _isGpsEnabled = MutableStateFlow(sessionManager.isGpsTrackingEnabled())
+    val isGpsEnabled: StateFlow<Boolean> = _isGpsEnabled.asStateFlow()
+
     private var contact: Contact? = null
     private var observeJob: Job? = null
 
@@ -300,14 +303,19 @@ class MainViewModel(
         val c = contact ?: return
         viewModelScope.launch {
             try {
-                println("DEBUG_B24: Запрос GPS координат...")
-                val location = locationClient.getCurrentLocation()
-                
-                if (location == null) {
-                    _events.value = "Включите GPS для записи координат!"
-                    println("DEBUG_B24: GPS результат: null (выключен или нет сигнала)")
+                val location = if (_isGpsEnabled.value) {
+                    println("DEBUG_B24: Запрос GPS координат...")
+                    val loc = locationClient.getCurrentLocation()
+                    if (loc == null) {
+                        _events.value = "Включите GPS для записи координат!"
+                        println("DEBUG_B24: GPS результат: null (выключен или нет сигнала)")
+                    } else {
+                        println("DEBUG_B24: GPS результат: lat=${loc.latitude}, lon=${loc.longitude}")
+                    }
+                    loc
                 } else {
-                    println("DEBUG_B24: GPS результат: lat=${location.latitude}, lon=${location.longitude}")
+                    println("DEBUG_B24: Запись GPS отключена в настройках.")
+                    null
                 }
                 
                 val ext = FileNameUtils.extensionFromFile(photoFile)
@@ -392,14 +400,19 @@ class MainViewModel(
         val c = contact ?: return
         viewModelScope.launch {
             try {
-                println("DEBUG_B24: Запрос GPS координат...")
-                val location = locationClient.getCurrentLocation()
-                
-                if (location == null) {
-                    _events.value = "Включите GPS для записи координат!"
-                    println("DEBUG_B24: GPS результат: null (выключен или нет сигнала)")
+                val location = if (_isGpsEnabled.value) {
+                    println("DEBUG_B24: Запрос GPS координат...")
+                    val loc = locationClient.getCurrentLocation()
+                    if (loc == null) {
+                        _events.value = "Включите GPS для записи координат!"
+                        println("DEBUG_B24: GPS результат: null (выключен или нет сигнала)")
+                    } else {
+                        println("DEBUG_B24: GPS результат: lat=${loc.latitude}, lon=${loc.longitude}")
+                    }
+                    loc
                 } else {
-                    println("DEBUG_B24: GPS результат: lat=${location.latitude}, lon=${location.longitude}")
+                    println("DEBUG_B24: Запись GPS отключена в настройках.")
+                    null
                 }
                 
                 val ext = FileNameUtils.extensionFromFile(photoFile)
@@ -440,6 +453,11 @@ class MainViewModel(
         if (enabled) {
             AppModule.scheduleSync()
         }
+    }
+
+    fun toggleGps(enabled: Boolean) {
+        sessionManager.setGpsTrackingEnabled(enabled)
+        _isGpsEnabled.value = enabled
     }
 
     fun manualSync() {

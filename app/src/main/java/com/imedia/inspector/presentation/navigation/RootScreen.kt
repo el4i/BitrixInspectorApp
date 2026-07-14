@@ -28,6 +28,7 @@ fun RootScreen(context: Context, viewModel: MainViewModel) {
     val state by viewModel.uiState.collectAsState()
     val event by viewModel.events.collectAsState()
     val isAutoUpload by viewModel.isAutoUpload.collectAsState()
+    val isGpsEnabled by viewModel.isGpsEnabled.collectAsState()
 
     event?.let { message ->
         LaunchedEffect(message) {
@@ -68,7 +69,9 @@ fun RootScreen(context: Context, viewModel: MainViewModel) {
             onLogout = viewModel::logout,
             onManualSync = viewModel::manualSync,
             isAutoUpload = isAutoUpload,
-            onToggleAutoUpload = viewModel::toggleAutoUpload
+            onToggleAutoUpload = viewModel::toggleAutoUpload,
+            isGpsEnabled = isGpsEnabled,
+            onToggleGps = viewModel::toggleGps
         )
         is AppScreenState.WorkerFlow -> WorkerScreen(
             context = context,
@@ -87,7 +90,9 @@ fun RootScreen(context: Context, viewModel: MainViewModel) {
             onLogout = viewModel::logout,
             onManualSync = viewModel::manualSync,
             isAutoUpload = isAutoUpload,
-            onToggleAutoUpload = viewModel::toggleAutoUpload
+            onToggleAutoUpload = viewModel::toggleAutoUpload,
+            isGpsEnabled = isGpsEnabled,
+            onToggleGps = viewModel::toggleGps
         )
         is AppScreenState.Error -> ErrorBox(
             message = s.message, 
