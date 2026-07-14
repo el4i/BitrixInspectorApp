@@ -15,13 +15,8 @@ import com.imedia.inspector.presentation.viewmodel.MainViewModel
 
 class MainActivity : ComponentActivity() {
 
-    // deviceUserId заменяет user_id из MAX-бота — уникален для устройства/сотрудника.
-    private val deviceUserId: String by lazy {
-        Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
-    }
-
     private val viewModel: MainViewModel by viewModels {
-        MainViewModelFactory(deviceUserId = deviceUserId, displayName = "Монтажник")
+        MainViewModelFactory(displayName = "Монтажник")
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

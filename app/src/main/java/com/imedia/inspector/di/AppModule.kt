@@ -13,6 +13,7 @@ import com.imedia.inspector.data.remote.SyncWorker
 import com.imedia.inspector.data.repository.BitrixRepository
 import com.imedia.inspector.data.repository.BitrixRepositoryImpl
 import com.imedia.inspector.presentation.viewmodel.MainViewModel
+import com.imedia.inspector.util.SessionManager
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -26,6 +27,10 @@ object AppModule {
 
     fun init(context: Context) {
         appContext = context.applicationContext
+    }
+
+    val sessionManager: SessionManager by lazy {
+        SessionManager(appContext)
     }
 
     val database: AppDatabase by lazy {
@@ -86,14 +91,13 @@ object AppModule {
 /**
  * deviceUserId — идентификатор конкретного сотрудника на этом устройстве
  * (например, из FirebaseInstallations, ANDROID_ID, либо логин, выданный при онбординге).
- * Он играет роль user_id из MAX-бота и хранится в Bitrix в UF_CRM_1774091874272.
+ * Он играет роль user_id из MAX-бота и хранится в Bitrix в UF_CRM_1784014618374.
  */
 class MainViewModelFactory(
-    private val deviceUserId: String,
     private val displayName: String
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         @Suppress("UNCHECKED_CAST")
-        return MainViewModel(AppModule.repository, deviceUserId, displayName) as T
+        return MainViewModel(AppModule.repository, AppModule.sessionManager, displayName) as T
     }
 }

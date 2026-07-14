@@ -3,8 +3,8 @@ package com.imedia.inspector.util
 /**
  * PHP собирал тело запроса через http_build_query($params), где $params мог содержать
  * вложенные массивы, например:
- *   ["FILTER" => ["UF_CRM_1774091874272" => "123"], "SELECT" => ["ID","STATE"]]
- * -> "FILTER[UF_CRM_1774091874272]=123&SELECT[0]=ID&SELECT[1]=STATE"
+ *   ["FILTER" => ["UF_CRM_1784014618374" => "123"], "SELECT" => ["ID","STATE"]]
+ * -> "FILTER[UF_CRM_1784014618374]=123&SELECT[0]=ID&SELECT[1]=STATE"
  *
  * Retrofit @FieldMap работает с плоской Map<String,String>, поэтому здесь мы
  * рекурсивно "расплющиваем" произвольный Any (Map/List/Scalar) в те же самые

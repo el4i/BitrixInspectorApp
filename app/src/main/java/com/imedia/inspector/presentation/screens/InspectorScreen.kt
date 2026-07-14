@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -46,7 +47,8 @@ fun InspectorScreen(
     onElevatorBroken: () -> Unit,
     onSendToRepair: (BreakageReason) -> Unit,
     onDismissSkipChooser: () -> Unit,
-    onPhotoTaken: (File) -> Unit
+    onPhotoTaken: (File) -> Unit,
+    onLogout: () -> Unit
 ) {
     Scaffold(
         topBar = {
@@ -65,6 +67,9 @@ fun InspectorScreen(
                     if (selected == null) {
                         IconButton(onClick = onLoadAddresses) {
                             Icon(Icons.Default.Refresh, contentDescription = "Обновить")
+                        }
+                        IconButton(onClick = onLogout) {
+                            Icon(Icons.Default.ExitToApp, contentDescription = "Выйти")
                         }
                     }
                 }

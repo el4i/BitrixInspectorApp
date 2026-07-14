@@ -55,6 +55,7 @@ data class AddressItem(
 /** Верхнеуровневое состояние экрана — заменяет числовые state (2,6,9,12,16,19...) из PHP. */
 sealed interface AppScreenState {
     data object Loading : AppScreenState
+    data object LoggedOut : AppScreenState
     data object NeedRegistration : AppScreenState
     data object PendingRegistration : AppScreenState
     data class InspectorFlow(

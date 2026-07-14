@@ -13,6 +13,7 @@ import com.imedia.inspector.domain.model.InspectorMode
 import com.imedia.inspector.domain.model.UserRole
 import com.imedia.inspector.domain.model.WorkerMode
 import com.imedia.inspector.util.FileNameUtils
+import com.imedia.inspector.util.SessionManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,7 +25,7 @@ import kotlinx.coroutines.flow.collectLatest
 
 class MainViewModel(
     private val repository: BitrixRepository,
-    private val deviceUserId: String,
+    private val sessionManager: SessionManager,
     private val displayName: String
 ) : ViewModel() {
 
@@ -38,35 +39,77 @@ class MainViewModel(
     private var observeJob: Job? = null
 
     init {
-        refresh()
+        val savedId = sessionManager.getUserId()
+        if (savedId == null) {
+            _uiState.value = AppScreenState.LoggedOut
+        } else {
+            refresh()
+        }
+    }
+
+    fun login(userId: String) {
+        if (userId.isBlank()) {
+            _events.value = "Введите ID"
+            return
+        }
+        viewModelScope.launch {
+            _uiState.value = AppScreenState.Loading
+            sessionManager.saveUserId(userId)
+            refresh()
+        }
+    }
+
+    fun logout() {
+        viewModelScope.launch {
+            _uiState.value = AppScreenState.Loading
+            sessionManager.logout()
+            contact = null
+            observeJob?.cancel()
+            _uiState.value = AppScreenState.LoggedOut
+        }
+    }
+
+    fun cancelRegistration() {
+        sessionManager.logout()
+        _uiState.value = AppScreenState.LoggedOut
     }
 
     fun refresh() {
+        val userId = sessionManager.getUserId() ?: return
         viewModelScope.launch {
+            val previousState = _uiState.value
             _uiState.value = AppScreenState.Loading
             try {
-                val c = repository.getContact(deviceUserId)
+                val c = repository.getContact(userId)
                 contact = c
                 if (c.isRegistered) {
-                    repository.saveContactToCache(deviceUserId, c)
+                    repository.saveContactToCache(userId, c)
                     loadForRole(c)
                 } else {
                     checkRegistrationStatus()
                 }
             } catch (e: Exception) {
-                val cached = repository.getCachedContact(deviceUserId)
+                val cached = repository.getCachedContact(userId)
                 if (cached != null) {
                     contact = cached
                     loadForRole(cached)
+                    _events.value = "Работаем в оффлайне"
                 } else {
-                    _uiState.value = AppScreenState.Error(e.message ?: "Ошибка сети или сервера")
+                    // Вместо экрана ошибки возвращаем на логин или NeedRegistration
+                    _events.value = "Ошибка: ${e.message ?: "Нет интернета"}"
+                    _uiState.value = if (previousState is AppScreenState.LoggedOut || previousState is AppScreenState.Loading) {
+                         AppScreenState.LoggedOut
+                    } else {
+                         previousState
+                    }
                 }
             }
         }
     }
 
     private suspend fun checkRegistrationStatus() {
-        val leadId = repository.getLeadId(deviceUserId)
+        val userId = sessionManager.getUserId() ?: return
+        val leadId = repository.getLeadId(userId)
         _uiState.value = if (leadId == 0) {
             AppScreenState.NeedRegistration
         } else {
@@ -74,18 +117,25 @@ class MainViewModel(
         }
     }
 
-    fun register() {
+    fun register(firstName: String, lastName: String, email: String) {
+        val userId = sessionManager.getUserId() ?: return
         viewModelScope.launch {
+            val previousState = _uiState.value
             _uiState.value = AppScreenState.Loading
             try {
-                val leadId = repository.getLeadId(deviceUserId)
-                if (leadId == 0) {
-                    repository.addLead(deviceUserId, displayName)
-                    _events.value = "Заявка на регистрацию принята."
+                val existingLeadId = repository.getLeadId(userId)
+                if (existingLeadId == 0) {
+                    val newId = repository.addLead(userId, firstName, lastName, email)
+                    if (newId > 0) {
+                        // Переключаемся на новый ID, выданный Битриксом
+                        sessionManager.saveUserId(newId.toString())
+                        _events.value = "Заявка принята. Ваш новый ID: $newId. Код придет на почту $email"
+                    }
                 }
                 checkRegistrationStatus()
             } catch (e: Exception) {
-                _uiState.value = AppScreenState.Error("Ошибка при регистрации: ${e.message}")
+                _events.value = "Ошибка при регистрации: ${e.message}"
+                _uiState.value = previousState
             }
         }
     }
@@ -111,7 +161,10 @@ class MainViewModel(
         when (c.role) {
             UserRole.MONTAJNIK -> loadInspectorAddress(skipped = false)
             UserRole.WORKER -> loadWorkerAddress(skipped = false)
-            UserRole.UNKNOWN -> _uiState.value = AppScreenState.Error("Роль пользователя не определена")
+            UserRole.UNKNOWN -> {
+                _events.value = "Роль пользователя не определена"
+                _uiState.value = AppScreenState.LoggedOut
+            }
         }
     }
 
@@ -159,6 +212,7 @@ class MainViewModel(
     fun loadInspectorAddress(skipped: Boolean) {
         val c = contact ?: return
         viewModelScope.launch {
+            val previousState = _uiState.value
             _uiState.value = AppScreenState.Loading
             try {
                 // Загружаем все, что относится к текущему пользователю
@@ -178,7 +232,8 @@ class MainViewModel(
                     deselectAddress()
                 }
             } catch (e: Exception) {
-                _uiState.value = AppScreenState.Error("Ошибка загрузки: ${e.message}")
+                _events.value = "Ошибка загрузки: ${e.message}"
+                _uiState.value = previousState
             }
         }
     }
@@ -273,6 +328,7 @@ class MainViewModel(
     fun loadWorkerAddress(skipped: Boolean) {
         val c = contact ?: return
         viewModelScope.launch {
+            val previousState = _uiState.value
             _uiState.value = AppScreenState.Loading
             try {
                 val list = repository.getAllRepairAddresses(c.route, false, forceRefresh = true)
@@ -291,7 +347,8 @@ class MainViewModel(
                     deselectAddress()
                 }
             } catch (e: Exception) {
-                _uiState.value = AppScreenState.Error("Ошибка загрузки: ${e.message}")
+                _events.value = "Ошибка загрузки: ${e.message}"
+                _uiState.value = previousState
             }
         }
     }

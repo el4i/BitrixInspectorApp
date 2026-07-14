@@ -34,7 +34,7 @@ interface BitrixRepository {
     suspend fun getAllAddresses(route: List<String>, skipped: Boolean, forceRefresh: Boolean = false): List<AddressItem>
     suspend fun getAllRepairAddresses(route: List<String>, skipped: Boolean, forceRefresh: Boolean = false): List<AddressItem>
     suspend fun updateAddress(item: AddressItem, patch: AddressUpdatePatch): Boolean
-    suspend fun addLead(deviceUserId: String, username: String): Int
+    suspend fun addLead(deviceUserId: String, firstName: String, lastName: String, email: String): Int
     suspend fun getLeadId(deviceUserId: String): Int
 
     // Новые методы для оффлайна
@@ -73,10 +73,10 @@ class BitrixRepositoryImpl(
     override suspend fun getContact(deviceUserId: String): Contact {
         val params = BitrixParamsBuilder.build(
             mapOf(
-                "FILTER" to mapOf("UF_CRM_1774091874272" to deviceUserId),
+                "FILTER" to mapOf("UF_CRM_1784014618374" to deviceUserId),
                 "SELECT" to listOf(
                     "ID",
-                    "UF_CRM_1774091874272",
+                    "UF_CRM_1784014618374",
                     "UF_CRM_1659870645432",
                     "UF_CRM_1659879474690",
                     "UF_CRM_1662016534407"
@@ -394,13 +394,16 @@ class BitrixRepositoryImpl(
         }
     }
 
-    override suspend fun addLead(deviceUserId: String, username: String): Int {
+    override suspend fun addLead(deviceUserId: String, firstName: String, lastName: String, email: String): Int {
         val params = BitrixParamsBuilder.build(
             mapOf(
                 "fields" to mapOf(
-                    "TITLE" to "Заявка на регистрацию пользователя $username DeviceID=$deviceUserId",
+                    "TITLE" to "Заявка на регистрацию пользователя Монтажник DeviceID= $deviceUserId",
+                    "NAME" to firstName,
+                    "LAST_NAME" to lastName,
                     "UF_CRM_1660057795899" to deviceUserId,
-                    "ASSIGNED_BY_ID" to "1"
+                    "ASSIGNED_BY_ID" to "1",
+                    "EMAIL" to listOf(mapOf("VALUE" to email, "VALUE_TYPE" to "WORK"))
                 ),
                 "params" to mapOf("REGISTER_SONET_EVENT" to "Y")
             )
@@ -410,9 +413,31 @@ class BitrixRepositoryImpl(
             throw Exception("Bitrix Error: ${response.errorDescription ?: response.error}")
         }
         val result = response.result
-        if (result is Number) return result.toInt()
-        if (result is String) return result.split(".").get(0).toIntOrNull() ?: 0
-        return 0
+        val leadId = when (result) {
+            is Number -> result.toInt()
+            is String -> result.split(".").get(0).toIntOrNull() ?: 0
+            else -> 0
+        }
+
+        // ВТОРОЙ ШАГ: Обновляем заголовок лида, чтобы в нем был его собственный ID
+        if (leadId > 0) {
+            try {
+                val updateParams = BitrixParamsBuilder.build(
+                    mapOf(
+                        "ID" to leadId,
+                        "FIELDS" to mapOf(
+                            "TITLE" to "Заявка на регистрацию пользователя Монтажник DeviceID= $leadId",
+                            "UF_CRM_1660057795899" to leadId.toString()
+                        )
+                    )
+                )
+                api.leadUpdate(updateParams)
+            } catch (e: Exception) {
+                println("DEBUG_B24: Не удалось обновить заголовок лида: ${e.message}")
+            }
+        }
+
+        return leadId
     }
 
     private fun isSuccess(result: Any?): Boolean {

@@ -3,7 +3,9 @@ package com.imedia.inspector.presentation.navigation
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -12,7 +14,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.imedia.inspector.domain.model.AppScreenState
+import com.imedia.inspector.presentation.screens.AuthScreen
 import com.imedia.inspector.presentation.screens.InspectorScreen
 import com.imedia.inspector.presentation.screens.NeedRegistrationScreen
 import com.imedia.inspector.presentation.screens.PendingRegistrationScreen
@@ -33,11 +37,16 @@ fun RootScreen(context: Context, viewModel: MainViewModel) {
 
     when (val s = state) {
         AppScreenState.Loading -> LoadingBox()
+        AppScreenState.LoggedOut -> AuthScreen(onLogin = viewModel::login)
         AppScreenState.NeedRegistration -> NeedRegistrationScreen(
-            onRegisterClick = viewModel::register,
-            onRefresh = viewModel::refresh
+            onRegisterClick = { f, l, e -> viewModel.register(f, l, e) },
+            onRefresh = viewModel::refresh,
+            onCancel = viewModel::cancelRegistration
         )
-        AppScreenState.PendingRegistration -> PendingRegistrationScreen(onRefresh = viewModel::refresh)
+        AppScreenState.PendingRegistration -> PendingRegistrationScreen(
+            onRefresh = viewModel::refresh,
+            onCancel = viewModel::cancelRegistration
+        )
         is AppScreenState.InspectorFlow -> InspectorScreen(
             context = context,
             addresses = s.addresses,
@@ -54,7 +63,8 @@ fun RootScreen(context: Context, viewModel: MainViewModel) {
             onElevatorBroken = viewModel::skipAddressElevatorBroken,
             onSendToRepair = viewModel::sendStandToRepair,
             onDismissSkipChooser = viewModel::closeBreakageChooser,
-            onPhotoTaken = viewModel::uploadInspectorPhoto
+            onPhotoTaken = viewModel::uploadInspectorPhoto,
+            onLogout = viewModel::logout
         )
         is AppScreenState.WorkerFlow -> WorkerScreen(
             context = context,
@@ -69,9 +79,14 @@ fun RootScreen(context: Context, viewModel: MainViewModel) {
             onLoadAddresses = { viewModel.loadWorkerAddress(skipped = false) },
             onLoadSkipped = { viewModel.loadWorkerAddress(skipped = true) },
             onSkipAddress = viewModel::skipWorkerAddress,
-            onPhotoTaken = viewModel::uploadWorkerPhoto
+            onPhotoTaken = viewModel::uploadWorkerPhoto,
+            onLogout = viewModel::logout
         )
-        is AppScreenState.Error -> ErrorBox(message = s.message, onRetry = viewModel::refresh)
+        is AppScreenState.Error -> ErrorBox(
+            message = s.message, 
+            onRetry = viewModel::refresh,
+            onBack = viewModel::cancelRegistration
+        )
     }
 }
 
@@ -83,8 +98,16 @@ private fun LoadingBox() {
 }
 
 @Composable
-private fun ErrorBox(message: String, onRetry: () -> Unit) {
+private fun ErrorBox(message: String, onRetry: () -> Unit, onBack: () -> Unit) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("Ошибка: $message")
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Ошибка: $message", color = androidx.compose.ui.graphics.Color.Red)
+            androidx.compose.material3.Button(onClick = onRetry, modifier = Modifier.padding(top = 16.dp)) {
+                Text("Повторить")
+            }
+            androidx.compose.material3.TextButton(onClick = onBack) {
+                Text("Вернуться к логину")
+            }
+        }
     }
 }

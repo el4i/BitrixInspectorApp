@@ -10,6 +10,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -41,7 +42,8 @@ fun WorkerScreen(
     onLoadAddresses: () -> Unit,
     onLoadSkipped: () -> Unit,
     onSkipAddress: () -> Unit,
-    onPhotoTaken: (File) -> Unit
+    onPhotoTaken: (File) -> Unit,
+    onLogout: () -> Unit
 ) {
     Scaffold(
         topBar = {
@@ -58,6 +60,9 @@ fun WorkerScreen(
                     if (selected == null) {
                         IconButton(onClick = onLoadAddresses) {
                             Icon(Icons.Default.Refresh, contentDescription = "Обновить")
+                        }
+                        IconButton(onClick = onLogout) {
+                            Icon(Icons.Default.ExitToApp, contentDescription = "Выйти")
                         }
                     }
                 }

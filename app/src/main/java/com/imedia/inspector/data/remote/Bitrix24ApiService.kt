@@ -48,6 +48,11 @@ interface Bitrix24ApiService {
     @POST("crm.lead.add.json")
     suspend fun leadAdd(@FieldMap params: Map<String, String>): B24EnvelopeDto<Any>
 
+    // ---- crm.lead.update ----
+    @FormUrlEncoded
+    @POST("crm.lead.update.json")
+    suspend fun leadUpdate(@FieldMap params: Map<String, String>): B24EnvelopeDto<Boolean>
+
     // ---- crm.lead.list -> getLead($telegramId) ----
     @FormUrlEncoded
     @POST("crm.lead.list.json")
