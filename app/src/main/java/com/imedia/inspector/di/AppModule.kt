@@ -39,11 +39,18 @@ object AppModule {
             .build()
     }
 
-    private const val BASE_URL = "https://ra-imedia1.bitrix24.ru/rest/591/hl3vsqvtd6iaig0b/"
+    private const val BASE_URL = "https://reklama-lift-kazan.ru/bot/bx-proxy.php/"
+    private const val PROXY_SECRET_KEY = "MySuperSecretKey_123456789"
 
     private val okHttpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BODY })
+            .addInterceptor { chain ->
+                val request = chain.request().newBuilder()
+                    .addHeader("X-Proxy-Key", PROXY_SECRET_KEY)
+                    .build()
+                chain.proceed(request)
+            }
             .connectTimeout(60, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
             .writeTimeout(60, TimeUnit.SECONDS)
