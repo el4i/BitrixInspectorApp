@@ -6,12 +6,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.CloudUpload
-import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material3.*
@@ -29,7 +31,7 @@ import com.imedia.inspector.domain.model.InspectorMode
 import com.imedia.inspector.presentation.components.CameraCaptureButton
 import java.io.File
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun InspectorScreen(
     context: Context,
@@ -50,6 +52,20 @@ fun InspectorScreen(
     onPhotoTaken: (File) -> Unit,
     onLogout: () -> Unit
 ) {
+    val pagerState = rememberPagerState(initialPage = selectedTab) { 4 }
+
+    // Синхронизация внешнего selectedTab с пейджером
+    LaunchedEffect(selectedTab) {
+        if (pagerState.currentPage != selectedTab) {
+            pagerState.animateScrollToPage(selectedTab)
+        }
+    }
+
+    // Синхронизация пейджера с внешним состоянием (если нужно для MainViewModel)
+    LaunchedEffect(pagerState.currentPage) {
+        onTabSelect(pagerState.currentPage)
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -78,52 +94,57 @@ fun InspectorScreen(
     ) { padding ->
         if (selected == null) {
             Column(Modifier.fillMaxSize().padding(padding)) {
-                ScrollableTabRow(selectedTabIndex = selectedTab, edgePadding = 16.dp) {
+                ScrollableTabRow(selectedTabIndex = pagerState.currentPage, edgePadding = 16.dp) {
                     Tab(
-                        selected = selectedTab == 0,
+                        selected = pagerState.currentPage == 0,
                         onClick = { onTabSelect(0) },
                         text = { Text("Новые") }
                     )
                     Tab(
-                        selected = selectedTab == 1,
+                        selected = pagerState.currentPage == 1,
                         onClick = { onTabSelect(1) },
                         text = { Text("Пропущенные") }
                     )
                     Tab(
-                        selected = selectedTab == 2,
+                        selected = pagerState.currentPage == 2,
                         onClick = { onTabSelect(2) },
                         text = { Text("Загруженные") }
                     )
                     Tab(
-                        selected = selectedTab == 3,
+                        selected = pagerState.currentPage == 3,
                         onClick = { onTabSelect(3) },
                         text = { Text("На ремонте") }
                     )
                 }
                 
-                // Фильтрация списка на основе вкладки
-                val filteredList = when (selectedTab) {
-                    0 -> addresses.filter { 
-                        it.localPhotoPath.isNullOrBlank() && it.status == AddressStatus.NEW 
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.Top
+                ) { page ->
+                    val filteredList = when (page) {
+                        0 -> addresses.filter { 
+                            it.localPhotoPath.isNullOrBlank() && it.status == AddressStatus.NEW 
+                        }
+                        1 -> addresses.filter { 
+                            it.status == AddressStatus.SKIPPED_INSPECTOR 
+                        }
+                        2 -> addresses.filter { 
+                            it.status == AddressStatus.PHOTO_UPLOADED || !it.localPhotoPath.isNullOrBlank()
+                        }
+                        3 -> addresses.filter { 
+                            it.status == AddressStatus.SENT_TO_REPAIR || it.status == AddressStatus.REPAIR_DONE
+                        }
+                        else -> emptyList()
                     }
-                    1 -> addresses.filter { 
-                        it.status == AddressStatus.SKIPPED_INSPECTOR 
-                    }
-                    2 -> addresses.filter { 
-                        it.status == AddressStatus.PHOTO_UPLOADED || !it.localPhotoPath.isNullOrBlank()
-                    }
-                    3 -> addresses.filter { 
-                        it.status == AddressStatus.SENT_TO_REPAIR || it.status == AddressStatus.REPAIR_DONE
-                    }
-                    else -> emptyList()
-                }
 
-                AddressListContent(
-                    padding = PaddingValues(0.dp),
-                    addresses = filteredList,
-                    onSelect = onSelect,
-                    onLoadAddresses = onLoadAddresses
-                )
+                    AddressListContent(
+                        padding = PaddingValues(0.dp),
+                        addresses = filteredList,
+                        onSelect = onSelect,
+                        onLoadAddresses = onLoadAddresses
+                    )
+                }
             }
         } else {
             BackHandler(onBack = onDeselect)
@@ -180,12 +201,14 @@ private fun AddressListContent(
 @Composable
 private fun AddressItemCard(item: AddressItem, onClick: () -> Unit) {
     val isPending = !item.localPhotoPath.isNullOrBlank()
-    val isUploaded = (item.status == AddressStatus.PHOTO_UPLOADED || item.status == AddressStatus.SENT_TO_REPAIR) && !isPending
-    
+    val isUploaded = item.status == AddressStatus.PHOTO_UPLOADED && !isPending
+    val isRepair = (item.status == AddressStatus.SENT_TO_REPAIR || item.status == AddressStatus.REPAIR_DONE) && !isPending
+
     ElevatedCard(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         colors = when {
+            isRepair -> CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f))
             isUploaded -> CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
             isPending -> CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
             else -> CardDefaults.elevatedCardColors()
@@ -197,12 +220,14 @@ private fun AddressItemCard(item: AddressItem, onClick: () -> Unit) {
         ) {
             Icon(
                 imageVector = when {
+                    isRepair -> Icons.Default.Build
                     isUploaded -> Icons.Default.CheckCircle
                     isPending -> Icons.Default.CloudUpload
                     else -> Icons.Default.LocationOn
                 },
                 contentDescription = null,
                 tint = when {
+                    isRepair -> MaterialTheme.colorScheme.error
                     isUploaded -> MaterialTheme.colorScheme.primary
                     isPending -> MaterialTheme.colorScheme.secondary
                     else -> MaterialTheme.colorScheme.outline
@@ -215,12 +240,17 @@ private fun AddressItemCard(item: AddressItem, onClick: () -> Unit) {
                     style = MaterialTheme.typography.titleMedium, 
                     fontWeight = FontWeight.Bold,
                     color = when {
+                        isRepair -> MaterialTheme.colorScheme.onErrorContainer
                         isUploaded -> MaterialTheme.colorScheme.onPrimaryContainer
                         isPending -> MaterialTheme.colorScheme.onSecondaryContainer
                         else -> MaterialTheme.colorScheme.onSurface
                     }
                 )
                 when {
+                    isRepair -> {
+                        val statusText = if (item.status == AddressStatus.REPAIR_DONE) "Ремонт выполнен" else "На ремонте"
+                        Text(statusText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    }
                     isUploaded -> {
                         Text("Отправлено на сервер", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                     }

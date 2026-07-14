@@ -336,6 +336,7 @@ class BitrixRepositoryImpl(
 
         for (status in statusList) {
             try {
+                println("DEBUG_B24: Запрос адресов со статусом $status для маршрута $route")
                 val routeFilter = if (route.size == 1) route[0] else route
                 val params = BitrixParamsBuilder.build(
                     mapOf(

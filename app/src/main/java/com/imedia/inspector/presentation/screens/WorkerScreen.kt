@@ -5,6 +5,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Build
@@ -27,7 +29,7 @@ import com.imedia.inspector.domain.model.WorkerMode
 import com.imedia.inspector.presentation.components.CameraCaptureButton
 import java.io.File
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun WorkerScreen(
     context: Context,
@@ -45,6 +47,20 @@ fun WorkerScreen(
     onPhotoTaken: (File) -> Unit,
     onLogout: () -> Unit
 ) {
+    val pagerState = rememberPagerState(initialPage = selectedTab) { 3 }
+
+    // Синхронизация внешнего selectedTab с пейджером
+    androidx.compose.runtime.LaunchedEffect(selectedTab) {
+        if (pagerState.currentPage != selectedTab) {
+            pagerState.animateScrollToPage(selectedTab)
+        }
+    }
+
+    // Синхронизация пейджера с внешним состоянием
+    androidx.compose.runtime.LaunchedEffect(pagerState.currentPage) {
+        onTabSelect(pagerState.currentPage)
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -71,43 +87,49 @@ fun WorkerScreen(
     ) { padding ->
         if (selected == null) {
             Column(Modifier.fillMaxSize().padding(padding)) {
-                ScrollableTabRow(selectedTabIndex = selectedTab, edgePadding = 16.dp) {
+                ScrollableTabRow(selectedTabIndex = pagerState.currentPage, edgePadding = 16.dp) {
                     Tab(
-                        selected = selectedTab == 0,
+                        selected = pagerState.currentPage == 0,
                         onClick = { onTabSelect(0) },
                         text = { Text("Новые") }
                     )
                     Tab(
-                        selected = selectedTab == 1,
+                        selected = pagerState.currentPage == 1,
                         onClick = { onTabSelect(1) },
                         text = { Text("Пропущенные") }
                     )
                     Tab(
-                        selected = selectedTab == 2,
+                        selected = pagerState.currentPage == 2,
                         onClick = { onTabSelect(2) },
                         text = { Text("Загруженные") }
                     )
                 }
 
-                val filteredList = when (selectedTab) {
-                    0 -> addresses.filter { 
-                        it.localPhotoPath.isNullOrBlank() && it.status == AddressStatus.SENT_TO_REPAIR 
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.Top
+                ) { page ->
+                    val filteredList = when (page) {
+                        0 -> addresses.filter { 
+                            it.localPhotoPath.isNullOrBlank() && it.status == AddressStatus.SENT_TO_REPAIR 
+                        }
+                        1 -> addresses.filter { 
+                            it.status == AddressStatus.SKIPPED_WORKER 
+                        }
+                        2 -> addresses.filter { 
+                            !it.localPhotoPath.isNullOrBlank() || it.status == AddressStatus.REPAIR_DONE
+                        }
+                        else -> emptyList()
                     }
-                    1 -> addresses.filter { 
-                        it.status == AddressStatus.SKIPPED_WORKER 
-                    }
-                    2 -> addresses.filter { 
-                        !it.localPhotoPath.isNullOrBlank() || it.status == AddressStatus.REPAIR_DONE
-                    }
-                    else -> emptyList()
-                }
 
-                WorkerListContent(
-                    padding = PaddingValues(0.dp),
-                    addresses = filteredList,
-                    onSelect = onSelect,
-                    onLoadAddresses = onLoadAddresses
-                )
+                    WorkerListContent(
+                        padding = PaddingValues(0.dp),
+                        addresses = filteredList,
+                        onSelect = onSelect,
+                        onLoadAddresses = onLoadAddresses
+                    )
+                }
             }
         } else {
             BackHandler(onBack = onDeselect)
