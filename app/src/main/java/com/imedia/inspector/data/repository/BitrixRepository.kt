@@ -43,6 +43,7 @@ interface BitrixRepository {
 
     suspend fun getCachedContact(deviceUserId: String): Contact?
     suspend fun saveContactToCache(deviceUserId: String, contact: Contact)
+    suspend fun closeLeadIfExists(deviceUserId: String)
 }
 
 /** То, что реально меняется при updList() в разных ветках сценария. */
@@ -395,10 +396,50 @@ class BitrixRepositoryImpl(
     }
 
     override suspend fun addLead(deviceUserId: String, firstName: String, lastName: String, email: String): Int {
+        // 1. ПРОВЕРКА: Есть ли уже лид с таким Email
+        try {
+            val searchParams = BitrixParamsBuilder.build(
+                mapOf(
+                    "FILTER" to mapOf("EMAIL" to email),
+                    "SELECT" to listOf("ID", "STATUS_ID")
+                )
+            )
+            val existingLeads = api.leadList(searchParams).result
+            
+            // Ищем лид, который не завершен (не сконвертирован в контакт и не проигран)
+            // По умолчанию в B24 'CONVERTED' и 'JUNK' — финальные.
+            val activeLead = existingLeads?.firstOrNull { 
+                val status = it["STATUS_ID"] ?: ""
+                status != "CONVERTED" && status != "JUNK"
+            }
+
+            if (activeLead != null) {
+                val existingId = activeLead["ID"]?.toString()?.split(".")?.get(0)?.toIntOrNull() ?: 0
+                if (existingId > 0) {
+                    println("DEBUG_B24: Нашел активный лид $existingId для email $email. Добавляю комментарий.")
+                    
+                    val commentParams = BitrixParamsBuilder.build(
+                        mapOf(
+                            "fields" to mapOf(
+                                "ENTITY_ID" to existingId,
+                                "ENTITY_TYPE" to "lead",
+                                "COMMENT" to "Получено повторное обращение на регистрацию.\nФИО: $firstName $lastName\nEmail: $email"
+                            )
+                        )
+                    )
+                    api.timelineCommentAdd(commentParams)
+                    return existingId
+                }
+            }
+        } catch (e: Exception) {
+            println("DEBUG_B24: Ошибка при поиске существующего лида: ${e.message}")
+        }
+
+        // 2. Если активного лида нет — СОЗДАЕМ НОВЫЙ
         val params = BitrixParamsBuilder.build(
             mapOf(
                 "fields" to mapOf(
-                    "TITLE" to "Заявка на регистрацию пользователя Монтажник DeviceID= $deviceUserId",
+                    "TITLE" to "Заявка на регистрацию пользователя $firstName $lastName DeviceID= $deviceUserId",
                     "NAME" to firstName,
                     "LAST_NAME" to lastName,
                     "UF_CRM_1660057795899" to deviceUserId,
@@ -426,7 +467,7 @@ class BitrixRepositoryImpl(
                     mapOf(
                         "ID" to leadId,
                         "FIELDS" to mapOf(
-                            "TITLE" to "Заявка на регистрацию пользователя Монтажник DeviceID= $leadId",
+                            "TITLE" to "Заявка на регистрацию пользователя $firstName $lastName DeviceID= $leadId",
                             "UF_CRM_1660057795899" to leadId.toString()
                         )
                     )
@@ -451,14 +492,20 @@ class BitrixRepositoryImpl(
     override suspend fun getLeadId(deviceUserId: String): Int {
         val params = BitrixParamsBuilder.build(
             mapOf(
-                "FILTER" to mapOf("UF_CRM_1660057795899" to deviceUserId),
-                "SELECT" to listOf("ID")
+                "FILTER" to mapOf(
+                    "UF_CRM_1660057795899" to deviceUserId
+                ),
+                "SELECT" to listOf("ID", "STATUS_ID")
             )
         )
         return try {
             val response = api.leadList(params)
-            val id = response.result?.firstOrNull()?.get("ID")
-            id?.toString()?.split(".")?.get(0)?.toIntOrNull() ?: 0
+            // Возвращаем ID только АКТИВНОГО лида (который еще не закрыт)
+            val activeLead = response.result?.firstOrNull { 
+                val status = it["STATUS_ID"]?.toString() ?: ""
+                status != "CONVERTED" && status != "JUNK"
+            }
+            activeLead?.get("ID")?.toString()?.split(".")?.get(0)?.toIntOrNull() ?: 0
         } catch (e: Exception) {
             0
         }
@@ -483,6 +530,36 @@ class BitrixRepositoryImpl(
                 routeJson = Converters().fromStringList(contact.route)
             )
         )
+    }
+
+    override suspend fun closeLeadIfExists(deviceUserId: String) {
+        try {
+            val params = BitrixParamsBuilder.build(
+                mapOf(
+                    "FILTER" to mapOf("UF_CRM_1660057795899" to deviceUserId),
+                    "SELECT" to listOf("ID", "STATUS_ID")
+                )
+            )
+            val leads = api.leadList(params).result
+            leads?.forEach { lead ->
+                val status = lead["STATUS_ID"]?.toString() ?: ""
+                if (status != "CONVERTED" && status != "JUNK") {
+                    val id = lead["ID"]?.toString()?.split(".")?.get(0)
+                    if (id != null) {
+                        val updateParams = BitrixParamsBuilder.build(
+                            mapOf(
+                                "ID" to id,
+                                "FIELDS" to mapOf("STATUS_ID" to "CONVERTED")
+                            )
+                        )
+                        api.leadUpdate(updateParams)
+                        println("DEBUG_B24: Лид $id автоматически закрыт после входа.")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            println("DEBUG_B24: Ошибка при автоматическом закрытии лида: ${e.message}")
+        }
     }
 }
 

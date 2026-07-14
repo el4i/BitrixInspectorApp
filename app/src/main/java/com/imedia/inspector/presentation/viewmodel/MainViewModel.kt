@@ -84,6 +84,7 @@ class MainViewModel(
                 contact = c
                 if (c.isRegistered) {
                     repository.saveContactToCache(userId, c)
+                    repository.closeLeadIfExists(userId)
                     loadForRole(c)
                 } else {
                     checkRegistrationStatus()

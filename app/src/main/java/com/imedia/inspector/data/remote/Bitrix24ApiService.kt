@@ -57,4 +57,9 @@ interface Bitrix24ApiService {
     @FormUrlEncoded
     @POST("crm.lead.list.json")
     suspend fun leadList(@FieldMap params: Map<String, String>): B24EnvelopeDto<List<Map<String, String>>>
+
+    // ---- crm.timeline.comment.add ----
+    @FormUrlEncoded
+    @POST("crm.timeline.comment.add.json")
+    suspend fun timelineCommentAdd(@FieldMap params: Map<String, String>): B24EnvelopeDto<Int>
 }
