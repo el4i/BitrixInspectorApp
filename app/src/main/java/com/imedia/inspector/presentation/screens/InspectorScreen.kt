@@ -16,10 +16,12 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -141,6 +143,7 @@ fun InspectorScreen(
                     AddressListContent(
                         padding = PaddingValues(0.dp),
                         addresses = filteredList,
+                        selectedTab = page,
                         onSelect = onSelect,
                         onLoadAddresses = onLoadAddresses
                     )
@@ -172,6 +175,7 @@ fun InspectorScreen(
 private fun AddressListContent(
     padding: PaddingValues,
     addresses: List<AddressItem>,
+    selectedTab: Int,
     onSelect: (AddressItem) -> Unit,
     onLoadAddresses: () -> Unit
 ) {
@@ -190,8 +194,14 @@ private fun AddressListContent(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(addresses) { item ->
-                    AddressItemCard(item = item, onClick = { onSelect(item) })
+                items(addresses.size) { index ->
+                    val item = addresses[index]
+                    val isLocked = selectedTab == 0 && index > 0
+                    AddressItemCard(
+                        item = item, 
+                        isLocked = isLocked,
+                        onClick = { if (!isLocked) onSelect(item) }
+                    )
                 }
             }
         }
@@ -199,14 +209,16 @@ private fun AddressListContent(
 }
 
 @Composable
-private fun AddressItemCard(item: AddressItem, onClick: () -> Unit) {
+private fun AddressItemCard(item: AddressItem, isLocked: Boolean = false, onClick: () -> Unit) {
     val isPending = !item.localPhotoPath.isNullOrBlank()
     val isUploaded = item.status == AddressStatus.PHOTO_UPLOADED && !isPending
     val isRepair = (item.status == AddressStatus.SENT_TO_REPAIR || item.status == AddressStatus.REPAIR_DONE) && !isPending
 
     ElevatedCard(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+        onClick = { if (!isLocked) onClick() },
+        modifier = Modifier
+            .fillMaxWidth()
+            .alpha(if (isLocked) 0.5f else 1f),
         colors = when {
             isRepair -> CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f))
             isUploaded -> CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
@@ -223,6 +235,7 @@ private fun AddressItemCard(item: AddressItem, onClick: () -> Unit) {
                     isRepair -> Icons.Default.Build
                     isUploaded -> Icons.Default.CheckCircle
                     isPending -> Icons.Default.CloudUpload
+                    isLocked -> Icons.Default.Lock
                     else -> Icons.Default.LocationOn
                 },
                 contentDescription = null,
@@ -230,6 +243,7 @@ private fun AddressItemCard(item: AddressItem, onClick: () -> Unit) {
                     isRepair -> MaterialTheme.colorScheme.error
                     isUploaded -> MaterialTheme.colorScheme.primary
                     isPending -> MaterialTheme.colorScheme.secondary
+                    isLocked -> MaterialTheme.colorScheme.outline
                     else -> MaterialTheme.colorScheme.outline
                 }
             )
@@ -243,10 +257,14 @@ private fun AddressItemCard(item: AddressItem, onClick: () -> Unit) {
                         isRepair -> MaterialTheme.colorScheme.onErrorContainer
                         isUploaded -> MaterialTheme.colorScheme.onPrimaryContainer
                         isPending -> MaterialTheme.colorScheme.onSecondaryContainer
+                        isLocked -> MaterialTheme.colorScheme.outline
                         else -> MaterialTheme.colorScheme.onSurface
                     }
                 )
                 when {
+                    isLocked -> {
+                        Text("Сначала выполните предыдущий адрес", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                    }
                     isRepair -> {
                         val statusText = if (item.status == AddressStatus.REPAIR_DONE) "Ремонт выполнен" else "На ремонте"
                         Text(statusText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)

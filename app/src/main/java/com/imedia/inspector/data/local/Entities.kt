@@ -18,7 +18,9 @@ data class AddressEntity(
     val breakageReason: String?,
     val timestampX: String?,
     val isWorkerList: Boolean, // true если из getRepairList, false если из getAddressList
-    val localPhotoPath: String? = null // Путь к фото в памяти телефона
+    val localPhotoPath: String? = null, // Путь к фото в памяти телефона
+    val latitude: Double? = null,
+    val longitude: Double? = null
 )
 
 @Entity(tableName = "pending_uploads")
@@ -32,7 +34,9 @@ data class PendingUploadEntity(
     val breakageReason: String?,
     val fileName: String?,
     val photoFilePath: String?, // путь к локальному файлу
-    val property107: String? = null // Порядковый номер
+    val property107: String? = null, // Порядковый номер
+    val latitude: Double? = null,
+    val longitude: Double? = null
 )
 
 @Entity(tableName = "user_config")

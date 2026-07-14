@@ -49,7 +49,9 @@ data class AddressItem(
     val handledByContactId: String?,
     val breakageReason: String?, // PROPERTY_119, актуально для роли WORKER
     val timestampX: String?,
-    val localPhotoPath: String? = null // Для отображения в оффлайне сразу после съемки
+    val localPhotoPath: String? = null, // Для отображения в оффлайне сразу после съемки
+    val latitude: Double? = null,
+    val longitude: Double? = null
 )
 
 /** Верхнеуровневое состояние экрана — заменяет числовые state (2,6,9,12,16,19...) из PHP. */

@@ -14,6 +14,7 @@ import com.imedia.inspector.domain.model.UserRole
 import com.imedia.inspector.domain.model.WorkerMode
 import com.imedia.inspector.util.FileNameUtils
 import com.imedia.inspector.util.SessionManager
+import com.imedia.inspector.util.LocationClient
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,6 +27,7 @@ import kotlinx.coroutines.flow.collectLatest
 class MainViewModel(
     private val repository: BitrixRepository,
     private val sessionManager: SessionManager,
+    private val locationClient: LocationClient,
     private val displayName: String
 ) : ViewModel() {
 
@@ -288,6 +290,16 @@ class MainViewModel(
         val c = contact ?: return
         viewModelScope.launch {
             try {
+                println("DEBUG_B24: Запрос GPS координат...")
+                val location = locationClient.getCurrentLocation()
+                
+                if (location == null) {
+                    _events.value = "Включите GPS для записи координат!"
+                    println("DEBUG_B24: GPS результат: null (выключен или нет сигнала)")
+                } else {
+                    println("DEBUG_B24: GPS результат: lat=${location.latitude}, lon=${location.longitude}")
+                }
+                
                 val ext = FileNameUtils.extensionFromFile(photoFile)
                 val fileName = FileNameUtils.buildFileName(item.routeCodes.firstOrNull().orEmpty(), item.name, ext)
                 val base64 = FileNameUtils.fileToBase64(photoFile)
@@ -297,7 +309,9 @@ class MainViewModel(
                     handledByContactId = c.id,
                     fileName = fileName,
                     fileBase64 = base64,
-                    localFilePath = photoFile.absolutePath
+                    localFilePath = photoFile.absolutePath,
+                    latitude = location?.latitude,
+                    longitude = location?.longitude
                 ))
                 _events.value = "Фото сохранено."
                 
@@ -374,6 +388,16 @@ class MainViewModel(
         val c = contact ?: return
         viewModelScope.launch {
             try {
+                println("DEBUG_B24: Запрос GPS координат...")
+                val location = locationClient.getCurrentLocation()
+                
+                if (location == null) {
+                    _events.value = "Включите GPS для записи координат!"
+                    println("DEBUG_B24: GPS результат: null (выключен или нет сигнала)")
+                } else {
+                    println("DEBUG_B24: GPS результат: lat=${location.latitude}, lon=${location.longitude}")
+                }
+                
                 val ext = FileNameUtils.extensionFromFile(photoFile)
                 val fileName = FileNameUtils.buildFileName(item.routeCodes.firstOrNull().orEmpty(), item.name, ext)
                 val base64 = FileNameUtils.fileToBase64(photoFile)
@@ -383,7 +407,9 @@ class MainViewModel(
                     handledByContactId = c.id,
                     fileName = fileName,
                     fileBase64 = base64,
-                    localFilePath = photoFile.absolutePath
+                    localFilePath = photoFile.absolutePath,
+                    latitude = location?.latitude,
+                    longitude = location?.longitude
                 ))
                 _events.value = "Фото сохранено."
 

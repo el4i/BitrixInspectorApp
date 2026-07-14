@@ -11,12 +11,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -126,6 +128,7 @@ fun WorkerScreen(
                     WorkerListContent(
                         padding = PaddingValues(0.dp),
                         addresses = filteredList,
+                        selectedTab = page,
                         onSelect = onSelect,
                         onLoadAddresses = onLoadAddresses
                     )
@@ -148,6 +151,7 @@ fun WorkerScreen(
 private fun WorkerListContent(
     padding: PaddingValues,
     addresses: List<AddressItem>,
+    selectedTab: Int,
     onSelect: (AddressItem) -> Unit,
     onLoadAddresses: () -> Unit
 ) {
@@ -166,8 +170,14 @@ private fun WorkerListContent(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(addresses) { item ->
-                    WorkerAddressCard(item = item, onClick = { onSelect(item) })
+                items(addresses.size) { index ->
+                    val item = addresses[index]
+                    val isLocked = selectedTab == 0 && index > 0
+                    WorkerAddressCard(
+                        item = item, 
+                        isLocked = isLocked,
+                        onClick = { onSelect(item) }
+                    )
                 }
             }
         }
@@ -175,13 +185,15 @@ private fun WorkerListContent(
 }
 
 @Composable
-private fun WorkerAddressCard(item: AddressItem, onClick: () -> Unit) {
+private fun WorkerAddressCard(item: AddressItem, isLocked: Boolean = false, onClick: () -> Unit) {
     val isPending = !item.localPhotoPath.isNullOrBlank()
     val isUploaded = item.status == AddressStatus.REPAIR_DONE && !isPending
 
     ElevatedCard(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+        onClick = { if (!isLocked) onClick() },
+        modifier = Modifier
+            .fillMaxWidth()
+            .alpha(if (isLocked) 0.5f else 1f),
         colors = when {
             isUploaded -> CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
             isPending -> CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
@@ -196,12 +208,14 @@ private fun WorkerAddressCard(item: AddressItem, onClick: () -> Unit) {
                 imageVector = when {
                     isUploaded -> Icons.Default.CheckCircle
                     isPending -> Icons.Default.CloudUpload
+                    isLocked -> Icons.Default.Lock
                     else -> Icons.Default.Build
                 },
                 contentDescription = null,
                 tint = when {
                     isUploaded -> MaterialTheme.colorScheme.primary
                     isPending -> MaterialTheme.colorScheme.secondary
+                    isLocked -> MaterialTheme.colorScheme.outline
                     else -> MaterialTheme.colorScheme.outline
                 }
             )
@@ -214,10 +228,14 @@ private fun WorkerAddressCard(item: AddressItem, onClick: () -> Unit) {
                     color = when {
                         isUploaded -> MaterialTheme.colorScheme.onPrimaryContainer
                         isPending -> MaterialTheme.colorScheme.onSecondaryContainer
+                        isLocked -> MaterialTheme.colorScheme.outline
                         else -> MaterialTheme.colorScheme.onSurface
                     }
                 )
                 when {
+                    isLocked -> {
+                        Text("Выполняйте задачи по очереди", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                    }
                     isUploaded -> {
                         Text("Ремонт подтвержден (в Битриксе)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                     }

@@ -44,7 +44,9 @@ class SyncWorker(
                     handledByContactId = pending.handledByContactId,
                     breakageReason = pending.breakageReason,
                     fileName = pending.fileName,
-                    fileBase64 = base64
+                    fileBase64 = base64,
+                    latitude = pending.latitude,
+                    longitude = pending.longitude
                 )
 
                 val fakeItem = AddressItem(

@@ -53,7 +53,9 @@ data class AddressUpdatePatch(
     val breakageReason: String? = null,
     val fileName: String? = null,
     val fileBase64: String? = null,
-    val localFilePath: String? = null // Для оффлайн режима
+    val localFilePath: String? = null, // Для оффлайн режима
+    val latitude: Double? = null,
+    val longitude: Double? = null
 )
 
 const val IBLOCK_ID_LISTS = "29"
@@ -184,9 +186,10 @@ class BitrixRepositoryImpl(
                 }
             }
 
-            // Локально сразу помечаем адрес как выполненный и СОХРАНЯЕМ ПУТЬ К ФОТО
+            // Локально сразу помечаем адрес как выполненный и СОХРАНЯЕМ ПУТЬ К ФОТО И КООРДИНАТЫ
             dao.updateAddressStatus(item.id, patch.status, patch.localFilePath)
-
+            // В Room нужно добавить обновление координат, но пока просто сохраним в очередь
+            
             // Сначала сохраняем данные в оффлайн-очередь в любом случае
             val pendingId = dao.insertPendingUpload(
                 PendingUploadEntity(
@@ -198,7 +201,9 @@ class BitrixRepositoryImpl(
                     breakageReason = patch.breakageReason,
                     fileName = patch.fileName,
                     photoFilePath = patch.localFilePath,
-                    property107 = item.property107
+                    property107 = item.property107,
+                    latitude = patch.latitude,
+                    longitude = patch.longitude
                 )
             )
 
@@ -236,14 +241,15 @@ class BitrixRepositoryImpl(
                         "ELEMENT_ID" to item.id,
                         "FIELDS" to mapOf(
                             "NAME" to item.name, // Название обязательно при любом обновлении!
-                            "PROPERTY_115" to "" // Очистка свойства
+                            "PROPERTY_115" to "", // Очистка фото
+                            "PROPERTY_159" to ""  // Очистка координат перед новой записью
                         )
                     )
                 )
                 api.listElementUpdate(clearParams)
-                println("DEBUG_B24: Свойство PROPERTY_115 очищено перед загрузкой нового фото.")
+                println("DEBUG_B24: Поля PROPERTY_115 и PROPERTY_159 очищены.")
             } catch (e: Exception) {
-                println("DEBUG_B24: Не удалось очистить PROPERTY_115: ${e.message}")
+                println("DEBUG_B24: Не удалось очистить поля: ${e.message}")
             }
         }
 
@@ -284,6 +290,16 @@ class BitrixRepositoryImpl(
             fields["PROPERTY_115"] = mapOf(
                 "fileData" to listOf(patch.fileName, patch.fileBase64)
             )
+        }
+
+        // 8. Координаты (Геоданные)
+        if (patch.latitude != null && patch.longitude != null) {
+            // Формат lat,lon без пробела. Если не сработает, попробуем lat|lon
+            val coords = "${patch.latitude},${patch.longitude}"
+            println("DEBUG_B24: Отправка координат в PROPERTY_159: $coords")
+            fields["PROPERTY_159"] = coords
+        } else {
+            println("DEBUG_B24: Координаты отсутствуют (null), поле PROPERTY_159 не будет заполнено.")
         }
 
         val params = BitrixParamsBuilder.build(
@@ -597,7 +613,9 @@ private fun ListElementDto.toDomain(): AddressItem = AddressItem(
     routeCodes = property111.toB24List(),
     handledByContactId = property113.toB24String(),
     breakageReason = property119.toB24String(),
-    timestampX = timestampX
+    timestampX = timestampX,
+    latitude = null, // Эти данные мы не запрашиваем при чтении, только пишем
+    longitude = null
 )
 
 private fun ListElementDto.toEntity(isWorker: Boolean): AddressEntity = AddressEntity(
@@ -609,7 +627,9 @@ private fun ListElementDto.toEntity(isWorker: Boolean): AddressEntity = AddressE
     handledByContactId = property113.toB24String(),
     breakageReason = property119.toB24String(),
     timestampX = timestampX,
-    isWorkerList = isWorker
+    isWorkerList = isWorker,
+    latitude = null,
+    longitude = null
 )
 
 private fun AddressEntity.toDomain(): AddressItem = AddressItem(
@@ -621,5 +641,7 @@ private fun AddressEntity.toDomain(): AddressItem = AddressItem(
     handledByContactId = handledByContactId,
     breakageReason = breakageReason,
     timestampX = timestampX,
-    localPhotoPath = localPhotoPath
+    localPhotoPath = localPhotoPath,
+    latitude = latitude,
+    longitude = longitude
 )

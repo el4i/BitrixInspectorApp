@@ -14,6 +14,7 @@ import com.imedia.inspector.data.repository.BitrixRepository
 import com.imedia.inspector.data.repository.BitrixRepositoryImpl
 import com.imedia.inspector.presentation.viewmodel.MainViewModel
 import com.imedia.inspector.util.SessionManager
+import com.imedia.inspector.util.LocationClient
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -31,6 +32,10 @@ object AppModule {
 
     val sessionManager: SessionManager by lazy {
         SessionManager(appContext)
+    }
+
+    val locationClient: LocationClient by lazy {
+        LocationClient(appContext)
     }
 
     val database: AppDatabase by lazy {
@@ -105,6 +110,11 @@ class MainViewModelFactory(
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         @Suppress("UNCHECKED_CAST")
-        return MainViewModel(AppModule.repository, AppModule.sessionManager, displayName) as T
+        return MainViewModel(
+            AppModule.repository, 
+            AppModule.sessionManager, 
+            AppModule.locationClient,
+            displayName
+        ) as T
     }
 }

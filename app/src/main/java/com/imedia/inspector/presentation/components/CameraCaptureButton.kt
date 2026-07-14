@@ -1,12 +1,16 @@
 package com.imedia.inspector.presentation.components
 
 import android.Manifest
+import android.app.Activity
 import android.content.Context
+import android.content.IntentSender
 import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,6 +32,11 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
+import com.google.android.gms.common.api.ResolvableApiException
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.LocationSettingsRequest
+import com.google.android.gms.location.Priority
 import java.io.File
 
 /**
@@ -55,37 +64,73 @@ fun CameraCaptureButton(
         }
     }
 
-    fun launchCamera() {
-        val file = createTempImageFile(context)
-        pendingFile = file
-        val uri = FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.fileprovider",
-            file
-        )
-        launcher.launch(uri)
+    val settingResultRequest = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            // Если пользователь нажал "ОК" в системном окне GPS
+            val file = createTempImageFile(context)
+            pendingFile = file
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            launcher.launch(uri)
+        } else {
+            Toast.makeText(context, "Без GPS работа невозможна!", Toast.LENGTH_SHORT).show()
+        }
     }
 
-    // Запрос разрешения CAMERA перед первым снимком (Android 6.0+).
-    // Если разрешение уже выдано, launchCamera() вызывается сразу, без диалога.
+    fun launchCameraWithCheck() {
+        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val isGpsEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+                locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+
+        if (isGpsEnabled) {
+            val file = createTempImageFile(context)
+            pendingFile = file
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            launcher.launch(uri)
+        } else {
+            // Пытаемся принудительно запросить включение GPS через системный диалог
+            val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1000).build()
+            val builder = LocationSettingsRequest.Builder().addLocationRequest(locationRequest)
+            val client = LocationServices.getSettingsClient(context)
+            client.checkLocationSettings(builder.build()).addOnFailureListener { exception ->
+                if (exception is ResolvableApiException) {
+                    try {
+                        val intentSenderRequest = IntentSenderRequest.Builder(exception.resolution).build()
+                        settingResultRequest.launch(intentSenderRequest)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
+        }
+    }
+
     val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) {
-            launchCamera()
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val cameraGranted = permissions[Manifest.permission.CAMERA] ?: false
+        if (cameraGranted) {
+            launchCameraWithCheck()
         }
     }
 
     Column {
         Button(
             onClick = {
-                val hasPermission = ContextCompat.checkSelfPermission(
-                    context, Manifest.permission.CAMERA
-                ) == PackageManager.PERMISSION_GRANTED
-                if (hasPermission) {
-                    launchCamera()
+                val hasCameraPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+                val hasLocationPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+                if (hasCameraPermission && hasLocationPermission) {
+                    launchCameraWithCheck()
                 } else {
-                    permissionLauncher.launch(Manifest.permission.CAMERA)
+                    permissionLauncher.launch(
+                        arrayOf(
+                            Manifest.permission.CAMERA,
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION
+                        )
+                    )
                 }
             },
             modifier = Modifier.fillMaxWidth()
