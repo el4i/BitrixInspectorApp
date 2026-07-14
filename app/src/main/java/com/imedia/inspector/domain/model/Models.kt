@@ -29,6 +29,15 @@ enum class BreakageReason(val label: String) {
     STAND_REPLACEMENT("Замена стенда")
 }
 
+/** Причины по которым лифт не работает или недоступен */
+enum class ElevatorSkipReason(val label: String) {
+    REPAIR("Лифт на ремонте"),
+    POWER_OUTAGE("Отключен свет"),
+    MAINTENANCE("Тех. обслуживание"),
+    NO_ACCESS("Нет доступа в подъезд"),
+    OTHER("Другое")
+}
+
 /** Bitrix contact (аналог $bxContact массива, который собирала getContact()). */
 data class Contact(
     val id: String?,
@@ -51,7 +60,8 @@ data class AddressItem(
     val timestampX: String?,
     val localPhotoPath: String? = null, // Для отображения в оффлайне сразу после съемки
     val latitude: Double? = null,
-    val longitude: Double? = null
+    val longitude: Double? = null,
+    val isPendingSync: Boolean = false
 )
 
 /** Верхнеуровневое состояние экрана — заменяет числовые state (2,6,9,12,16,19...) из PHP. */

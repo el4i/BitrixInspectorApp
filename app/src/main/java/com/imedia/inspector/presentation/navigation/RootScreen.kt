@@ -27,6 +27,7 @@ import com.imedia.inspector.presentation.viewmodel.MainViewModel
 fun RootScreen(context: Context, viewModel: MainViewModel) {
     val state by viewModel.uiState.collectAsState()
     val event by viewModel.events.collectAsState()
+    val isAutoUpload by viewModel.isAutoUpload.collectAsState()
 
     event?.let { message ->
         LaunchedEffect(message) {
@@ -60,11 +61,14 @@ fun RootScreen(context: Context, viewModel: MainViewModel) {
             onLoadAddresses = { viewModel.refresh() },
             onLoadSkipped = { viewModel.loadInspectorAddress(skipped = true) },
             onOpenSkipChooser = viewModel::openBreakageChooser,
-            onElevatorBroken = viewModel::skipAddressElevatorBroken,
+            onElevatorBroken = { reason -> viewModel.skipAddressElevatorBroken(reason) },
             onSendToRepair = viewModel::sendStandToRepair,
             onDismissSkipChooser = viewModel::closeBreakageChooser,
             onPhotoTaken = viewModel::uploadInspectorPhoto,
-            onLogout = viewModel::logout
+            onLogout = viewModel::logout,
+            onManualSync = viewModel::manualSync,
+            isAutoUpload = isAutoUpload,
+            onToggleAutoUpload = viewModel::toggleAutoUpload
         )
         is AppScreenState.WorkerFlow -> WorkerScreen(
             context = context,
@@ -80,7 +84,10 @@ fun RootScreen(context: Context, viewModel: MainViewModel) {
             onLoadSkipped = { viewModel.loadWorkerAddress(skipped = true) },
             onSkipAddress = viewModel::skipWorkerAddress,
             onPhotoTaken = viewModel::uploadWorkerPhoto,
-            onLogout = viewModel::logout
+            onLogout = viewModel::logout,
+            onManualSync = viewModel::manualSync,
+            isAutoUpload = isAutoUpload,
+            onToggleAutoUpload = viewModel::toggleAutoUpload
         )
         is AppScreenState.Error -> ErrorBox(
             message = s.message, 

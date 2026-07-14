@@ -20,7 +20,8 @@ data class AddressEntity(
     val isWorkerList: Boolean, // true если из getRepairList, false если из getAddressList
     val localPhotoPath: String? = null, // Путь к фото в памяти телефона
     val latitude: Double? = null,
-    val longitude: Double? = null
+    val longitude: Double? = null,
+    val isPendingSync: Boolean = false
 )
 
 @Entity(tableName = "pending_uploads")

@@ -46,8 +46,11 @@ interface AddressDao {
     @Query("DELETE FROM pending_uploads WHERE localId = :id")
     suspend fun deletePendingUpload(id: Long)
 
-    @Query("UPDATE addresses SET status = :status, localPhotoPath = :photoPath WHERE id = :addressId")
-    suspend fun updateAddressStatus(addressId: String, status: AddressStatus, photoPath: String?)
+    @Query("UPDATE addresses SET status = :status, localPhotoPath = :photoPath, isPendingSync = :isPending WHERE id = :addressId")
+    suspend fun updateAddressStatus(addressId: String, status: AddressStatus, photoPath: String?, isPending: Boolean)
+
+    @Query("UPDATE addresses SET isPendingSync = :isPending WHERE id = :addressId")
+    suspend fun updateSyncStatus(addressId: String, isPending: Boolean)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveConfig(config: UserConfigEntity)
@@ -56,7 +59,7 @@ interface AddressDao {
     suspend fun getConfig(id: String): UserConfigEntity?
 }
 
-@Database(entities = [AddressEntity::class, PendingUploadEntity::class, UserConfigEntity::class], version = 7)
+@Database(entities = [AddressEntity::class, PendingUploadEntity::class, UserConfigEntity::class], version = 8)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun addressDao(): AddressDao

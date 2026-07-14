@@ -18,5 +18,13 @@ class SessionManager(context: Context) {
         prefs.edit().clear().apply()
     }
 
+    fun isAutoUploadEnabled(): Boolean {
+        return prefs.getBoolean("auto_upload", false) // По умолчанию ВЫКЛЮЧЕНО
+    }
+
+    fun setAutoUploadEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("auto_upload", enabled).apply()
+    }
+
     fun isLoggedIn(): Boolean = getUserId() != null
 }

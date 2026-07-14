@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
@@ -29,6 +30,7 @@ import coil.compose.AsyncImage
 import com.imedia.inspector.domain.model.AddressItem
 import com.imedia.inspector.domain.model.AddressStatus
 import com.imedia.inspector.domain.model.BreakageReason
+import com.imedia.inspector.domain.model.ElevatorSkipReason
 import com.imedia.inspector.domain.model.InspectorMode
 import com.imedia.inspector.presentation.components.CameraCaptureButton
 import java.io.File
@@ -48,11 +50,14 @@ fun InspectorScreen(
     onLoadAddresses: () -> Unit,
     onLoadSkipped: () -> Unit,
     onOpenSkipChooser: () -> Unit,
-    onElevatorBroken: () -> Unit,
+    onElevatorBroken: (ElevatorSkipReason) -> Unit,
     onSendToRepair: (BreakageReason) -> Unit,
     onDismissSkipChooser: () -> Unit,
     onPhotoTaken: (File) -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onManualSync: () -> Unit,
+    isAutoUpload: Boolean,
+    onToggleAutoUpload: (Boolean) -> Unit
 ) {
     val pagerState = rememberPagerState(initialPage = selectedTab) { 4 }
 
@@ -88,6 +93,49 @@ fun InspectorScreen(
                         }
                         IconButton(onClick = onLogout) {
                             Icon(Icons.Default.ExitToApp, contentDescription = "Выйти")
+                        }
+                        
+                        var showMenu by remember { mutableStateOf(false) }
+                        var showAutoUploadConfirm by remember { mutableStateOf(false) }
+
+                        if (showAutoUploadConfirm) {
+                            AlertDialog(
+                                onDismissRequest = { showAutoUploadConfirm = false },
+                                title = { Text("Включить автозагрузку?") },
+                                text = { Text("При включении этой функции фотографии будут отправляться в Битрикс автоматически сразу после съемки. Это может увеличить расход мобильного трафика.") },
+                                confirmButton = {
+                                    Button(onClick = {
+                                        onToggleAutoUpload(true)
+                                        showAutoUploadConfirm = false
+                                    }) { Text("Включить") }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showAutoUploadConfirm = false }) { Text("Отмена") }
+                                }
+                            )
+                        }
+
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(Icons.Default.Settings, contentDescription = "Настройки")
+                        }
+                        DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                            DropdownMenuItem(
+                                text = { 
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Автозагрузка")
+                                        Spacer(Modifier.weight(1f))
+                                        Switch(checked = isAutoUpload, onCheckedChange = { checked ->
+                                            if (checked) {
+                                                showAutoUploadConfirm = true
+                                            } else {
+                                                onToggleAutoUpload(false)
+                                            }
+                                            showMenu = false 
+                                        })
+                                    }
+                                },
+                                onClick = { }
+                            )
                         }
                     }
                 }
@@ -126,13 +174,13 @@ fun InspectorScreen(
                 ) { page ->
                     val filteredList = when (page) {
                         0 -> addresses.filter { 
-                            it.localPhotoPath.isNullOrBlank() && it.status == AddressStatus.NEW 
+                            it.status == AddressStatus.NEW && !it.isPendingSync 
                         }
                         1 -> addresses.filter { 
                             it.status == AddressStatus.SKIPPED_INSPECTOR 
                         }
                         2 -> addresses.filter { 
-                            it.status == AddressStatus.PHOTO_UPLOADED || !it.localPhotoPath.isNullOrBlank()
+                            it.status == AddressStatus.PHOTO_UPLOADED || (it.isPendingSync && !it.localPhotoPath.isNullOrBlank())
                         }
                         3 -> addresses.filter { 
                             it.status == AddressStatus.SENT_TO_REPAIR || it.status == AddressStatus.REPAIR_DONE
@@ -145,7 +193,8 @@ fun InspectorScreen(
                         addresses = filteredList,
                         selectedTab = page,
                         onSelect = onSelect,
-                        onLoadAddresses = onLoadAddresses
+                        onLoadAddresses = onLoadAddresses,
+                        onManualSync = onManualSync
                     )
                 }
             }
@@ -177,9 +226,23 @@ private fun AddressListContent(
     addresses: List<AddressItem>,
     selectedTab: Int,
     onSelect: (AddressItem) -> Unit,
-    onLoadAddresses: () -> Unit
+    onLoadAddresses: () -> Unit,
+    onManualSync: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+        if (selectedTab == 2 && addresses.any { !it.localPhotoPath.isNullOrBlank() }) {
+            Button(
+                onClick = onManualSync,
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+            ) {
+                Icon(Icons.Default.CloudUpload, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("ВЫГРУЗИТЬ ФОТООТЧЕТ")
+            }
+            HorizontalDivider()
+        }
+
         if (addresses.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -200,6 +263,7 @@ private fun AddressListContent(
                     AddressItemCard(
                         item = item, 
                         isLocked = isLocked,
+                        showPendingStatus = selectedTab == 2,
                         onClick = { if (!isLocked) onSelect(item) }
                     )
                 }
@@ -209,10 +273,18 @@ private fun AddressListContent(
 }
 
 @Composable
-private fun AddressItemCard(item: AddressItem, isLocked: Boolean = false, onClick: () -> Unit) {
-    val isPending = !item.localPhotoPath.isNullOrBlank()
-    val isUploaded = item.status == AddressStatus.PHOTO_UPLOADED && !isPending
-    val isRepair = (item.status == AddressStatus.SENT_TO_REPAIR || item.status == AddressStatus.REPAIR_DONE) && !isPending
+private fun AddressItemCard(
+    item: AddressItem, 
+    isLocked: Boolean = false, 
+    showPendingStatus: Boolean = true,
+    onClick: () -> Unit
+) {
+    // Синий статус "Ожидает" показываем ТОЛЬКО если есть фото и мы на вкладке загрузки.
+    // Пропуски (скипы) теперь синхронизируются автоматом, им этот статус не нужен.
+    val isPending = item.isPendingSync && showPendingStatus && !item.localPhotoPath.isNullOrBlank()
+    val isUploaded = (item.status == AddressStatus.PHOTO_UPLOADED || item.status == AddressStatus.REPAIR_DONE) && !item.isPendingSync
+    val isRepair = item.status == AddressStatus.SENT_TO_REPAIR && !item.isPendingSync
+    val isSkipped = item.status == AddressStatus.SKIPPED_INSPECTOR
 
     ElevatedCard(
         onClick = { if (!isLocked) onClick() },
@@ -265,6 +337,9 @@ private fun AddressItemCard(item: AddressItem, isLocked: Boolean = false, onClic
                     isLocked -> {
                         Text("Сначала выполните предыдущий адрес", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
                     }
+                    isPending -> {
+                        Text("Ожидает интернета", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                    }
                     isRepair -> {
                         val statusText = if (item.status == AddressStatus.REPAIR_DONE) "Ремонт выполнен" else "На ремонте"
                         Text(statusText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
@@ -272,8 +347,8 @@ private fun AddressItemCard(item: AddressItem, isLocked: Boolean = false, onClic
                     isUploaded -> {
                         Text("Отправлено на сервер", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                     }
-                    isPending -> {
-                        Text("Ожидает интернета", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                    isSkipped -> {
+                        Text("Адрес пропущен: ${item.breakageReason ?: ""}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
                     }
                     !item.property107.isNullOrBlank() -> {
                         Text("№ ${item.property107}", style = MaterialTheme.typography.bodySmall)
@@ -292,9 +367,13 @@ private fun AddressDetailContent(
     onOpenSkipChooser: () -> Unit,
     onPhotoTaken: (File) -> Unit
 ) {
-    val isDone = !address.localPhotoPath.isNullOrBlank() || 
+    // Адрес считается завершенным (кнопки скрыты), только если есть ФОТО или он в РЕМОНТЕ.
+    // Пропущенные адреса (SKIPPED) позволяют переснять фото, поэтому кнопки для них НЕ скрываем.
+    val isDone = (!address.localPhotoPath.isNullOrBlank() && address.isPendingSync) ||
                  address.status == AddressStatus.PHOTO_UPLOADED || 
-                 address.status == AddressStatus.SENT_TO_REPAIR
+                 address.status == AddressStatus.SENT_TO_REPAIR ||
+                 address.status == AddressStatus.REPAIR_DONE
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -312,10 +391,10 @@ private fun AddressDetailContent(
                 shape = MaterialTheme.shapes.medium
             ) {
                 Column(Modifier.padding(16.dp)) {
-                    val statusText = if (!address.localPhotoPath.isNullOrBlank()) 
-                        "Фото сохранено и ожидает интернета" 
+                    val statusText = if (address.isPendingSync) 
+                        "Ожидает интернета для отправки" 
                     else 
-                        "Фото успешно отправлено на сервер"
+                        "Успешно отправлено на сервер"
                     
                     Text(statusText, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Spacer(Modifier.height(8.dp))
@@ -359,18 +438,24 @@ private fun AddressDetailContent(
 
 @Composable
 private fun BreakageChooserContent(
-    onElevatorBroken: () -> Unit,
+    onElevatorBroken: (ElevatorSkipReason) -> Unit,
     onSendToRepair: (BreakageReason) -> Unit
 ) {
     var showStandOptions by remember { mutableStateOf(false) }
+    var showElevatorOptions by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.padding(24.dp).padding(bottom = 32.dp)) {
-        Text("В чем проблема?", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        val title = when {
+            showStandOptions -> "Стенд сломан"
+            showElevatorOptions -> "Проблема с лифтом"
+            else -> "В чем проблема?"
+        }
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(16.dp))
 
-        if (!showStandOptions) {
+        if (!showStandOptions && !showElevatorOptions) {
             Button(
-                onClick = onElevatorBroken,
+                onClick = { showElevatorOptions = true },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant)
             ) { Text("Лифт не работает") }
@@ -381,6 +466,13 @@ private fun BreakageChooserContent(
                 onClick = { showStandOptions = true },
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Стенд сломан") }
+        } else if (showElevatorOptions) {
+            ElevatorSkipReason.entries.forEach { reason ->
+                TextButton(onClick = { onElevatorBroken(reason) }, modifier = Modifier.fillMaxWidth()) {
+                    Text(reason.label)
+                }
+                HorizontalDivider()
+            }
         } else {
             BreakageReason.entries.forEach { reason ->
                 TextButton(onClick = { onSendToRepair(reason) }, modifier = Modifier.fillMaxWidth()) {

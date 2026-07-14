@@ -78,13 +78,17 @@ object AppModule {
         BitrixRepositoryImpl(bitrixApi, database.addressDao())
     }
 
-    fun scheduleSync() {
+    fun scheduleSync(forceManual: Boolean = false) {
+        // Мы убрали ранний выход, теперь SyncWorker сам решит,
+        // что отправлять (метаданные), а что оставить (фото).
+
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
         val syncRequest = OneTimeWorkRequestBuilder<SyncWorker>()
             .setConstraints(constraints)
+            .setInputData(androidx.work.Data.Builder().putString("sync_type", if (forceManual) "manual" else "auto").build())
             .setBackoffCriteria(
                 androidx.work.BackoffPolicy.EXPONENTIAL,
                 androidx.work.WorkRequest.MIN_BACKOFF_MILLIS,

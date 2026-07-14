@@ -187,11 +187,11 @@ class BitrixRepositoryImpl(
             }
 
             // Локально сразу помечаем адрес как выполненный и СОХРАНЯЕМ ПУТЬ К ФОТО И КООРДИНАТЫ
-            dao.updateAddressStatus(item.id, patch.status, patch.localFilePath)
+            dao.updateAddressStatus(item.id, patch.status, patch.localFilePath, true) // true = Ожидает синхронизации
             // В Room нужно добавить обновление координат, но пока просто сохраним в очередь
             
             // Сначала сохраняем данные в оффлайн-очередь в любом случае
-            val pendingId = dao.insertPendingUpload(
+            dao.insertPendingUpload(
                 PendingUploadEntity(
                     addressId = item.id,
                     addressName = item.name,
@@ -206,18 +206,6 @@ class BitrixRepositoryImpl(
                     longitude = patch.longitude
                 )
             )
-
-            try {
-                // Пробуем отправить сразу (вызываем внутренний метод без лока, так как мы уже под локом)
-                val success = uploadDirectlyInternal(item, patch)
-                if (success) {
-                    // Если отправилось - удаляем из очереди
-                    dao.deletePendingUpload(pendingId)
-                    return@withLock true
-                }
-            } catch (e: Exception) {
-                println("DEBUG_B24: Ошибка при немедленной отправке (но сохранено в очередь): ${e.message}")
-            }
 
             AppModule.scheduleSync()
             true // Всегда возвращаем true, чтобы UI переключился дальше
@@ -315,15 +303,11 @@ class BitrixRepositoryImpl(
         
         val success = isSuccess(response.result)
         
-        // УДАЛЕНИЕ ФОТО ПОСЛЕ УСПЕШНОЙ ЗАГРУЗКИ
+        // МЫ БОЛЬШЕ НЕ УДАЛЯЕМ ФОТО, чтобы они оставались в галерее
         if (success && !patch.localFilePath.isNullOrBlank()) {
             try {
-                val file = File(patch.localFilePath)
-                if (file.exists()) {
-                    file.delete()
-                    // Также очищаем путь в базе данных, чтобы не пытаться показать удаленное фото
-                    dao.updateAddressStatus(item.id, patch.status, null)
-                }
+                // Обновляем статус синхронизации в базе
+                dao.updateSyncStatus(item.id, false) // false = Синхронизировано
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -397,7 +381,10 @@ class BitrixRepositoryImpl(
                     newElement.copy(
                         status = localMatch?.status ?: newElement.status,
                         localPhotoPath = localMatch?.localPhotoPath,
-                        breakageReason = localMatch?.breakageReason ?: newElement.breakageReason
+                        breakageReason = localMatch?.breakageReason ?: newElement.breakageReason,
+                        latitude = localMatch?.latitude ?: newElement.latitude,
+                        longitude = localMatch?.longitude ?: newElement.longitude,
+                        isPendingSync = hasPending || (localMatch?.isPendingSync ?: false)
                     )
                 } else {
                     newElement
@@ -629,7 +616,8 @@ private fun ListElementDto.toEntity(isWorker: Boolean): AddressEntity = AddressE
     timestampX = timestampX,
     isWorkerList = isWorker,
     latitude = null,
-    longitude = null
+    longitude = null,
+    isPendingSync = false
 )
 
 private fun AddressEntity.toDomain(): AddressItem = AddressItem(
@@ -643,5 +631,6 @@ private fun AddressEntity.toDomain(): AddressItem = AddressItem(
     timestampX = timestampX,
     localPhotoPath = localPhotoPath,
     latitude = latitude,
-    longitude = longitude
+    longitude = longitude,
+    isPendingSync = isPendingSync
 )

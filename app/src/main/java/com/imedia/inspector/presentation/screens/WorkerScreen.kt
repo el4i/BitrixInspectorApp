@@ -13,9 +13,10 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -47,7 +48,10 @@ fun WorkerScreen(
     onLoadSkipped: () -> Unit,
     onSkipAddress: () -> Unit,
     onPhotoTaken: (File) -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onManualSync: () -> Unit,
+    isAutoUpload: Boolean,
+    onToggleAutoUpload: (Boolean) -> Unit
 ) {
     val pagerState = rememberPagerState(initialPage = selectedTab) { 3 }
 
@@ -82,6 +86,49 @@ fun WorkerScreen(
                         IconButton(onClick = onLogout) {
                             Icon(Icons.Default.ExitToApp, contentDescription = "Выйти")
                         }
+                        
+                        var showMenu by remember { mutableStateOf(false) }
+                        var showAutoUploadConfirm by remember { mutableStateOf(false) }
+
+                        if (showAutoUploadConfirm) {
+                            AlertDialog(
+                                onDismissRequest = { showAutoUploadConfirm = false },
+                                title = { Text("Включить автозагрузку?") },
+                                text = { Text("При включении этой функции фотографии будут отправляться в Битрикс автоматически сразу после съемки. Это может увеличить расход мобильного трафика.") },
+                                confirmButton = {
+                                    Button(onClick = {
+                                        onToggleAutoUpload(true)
+                                        showAutoUploadConfirm = false
+                                    }) { Text("Включить") }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showAutoUploadConfirm = false }) { Text("Отмена") }
+                                }
+                            )
+                        }
+
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(Icons.Default.Settings, contentDescription = "Настройки")
+                        }
+                        DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                            DropdownMenuItem(
+                                text = { 
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Автозагрузка")
+                                        Spacer(Modifier.weight(1f))
+                                        Switch(checked = isAutoUpload, onCheckedChange = { checked ->
+                                            if (checked) {
+                                                showAutoUploadConfirm = true
+                                            } else {
+                                                onToggleAutoUpload(false)
+                                            }
+                                            showMenu = false 
+                                        })
+                                    }
+                                },
+                                onClick = { }
+                            )
+                        }
                     }
                 }
             )
@@ -114,13 +161,13 @@ fun WorkerScreen(
                 ) { page ->
                     val filteredList = when (page) {
                         0 -> addresses.filter { 
-                            it.localPhotoPath.isNullOrBlank() && it.status == AddressStatus.SENT_TO_REPAIR 
+                            it.status == AddressStatus.SENT_TO_REPAIR && !it.isPendingSync 
                         }
                         1 -> addresses.filter { 
                             it.status == AddressStatus.SKIPPED_WORKER 
                         }
                         2 -> addresses.filter { 
-                            !it.localPhotoPath.isNullOrBlank() || it.status == AddressStatus.REPAIR_DONE
+                            it.status == AddressStatus.REPAIR_DONE || (it.isPendingSync && !it.localPhotoPath.isNullOrBlank())
                         }
                         else -> emptyList()
                     }
@@ -130,7 +177,8 @@ fun WorkerScreen(
                         addresses = filteredList,
                         selectedTab = page,
                         onSelect = onSelect,
-                        onLoadAddresses = onLoadAddresses
+                        onLoadAddresses = onLoadAddresses,
+                        onManualSync = onManualSync
                     )
                 }
             }
@@ -153,9 +201,23 @@ private fun WorkerListContent(
     addresses: List<AddressItem>,
     selectedTab: Int,
     onSelect: (AddressItem) -> Unit,
-    onLoadAddresses: () -> Unit
+    onLoadAddresses: () -> Unit,
+    onManualSync: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+        if (selectedTab == 2 && addresses.any { !it.localPhotoPath.isNullOrBlank() }) {
+            Button(
+                onClick = onManualSync,
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+            ) {
+                Icon(Icons.Default.CloudUpload, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("ВЫГРУЗИТЬ ФОТООТЧЕТ")
+            }
+            HorizontalDivider()
+        }
+
         if (addresses.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -176,6 +238,7 @@ private fun WorkerListContent(
                     WorkerAddressCard(
                         item = item, 
                         isLocked = isLocked,
+                        showPendingStatus = selectedTab == 2,
                         onClick = { onSelect(item) }
                     )
                 }
@@ -185,9 +248,15 @@ private fun WorkerListContent(
 }
 
 @Composable
-private fun WorkerAddressCard(item: AddressItem, isLocked: Boolean = false, onClick: () -> Unit) {
-    val isPending = !item.localPhotoPath.isNullOrBlank()
-    val isUploaded = item.status == AddressStatus.REPAIR_DONE && !isPending
+private fun WorkerAddressCard(
+    item: AddressItem, 
+    isLocked: Boolean = false, 
+    showPendingStatus: Boolean = true,
+    onClick: () -> Unit
+) {
+    // Синий статус показываем только для ФОТО на вкладке загрузки
+    val isPending = item.isPendingSync && showPendingStatus && !item.localPhotoPath.isNullOrBlank()
+    val isUploaded = item.status == AddressStatus.REPAIR_DONE && !item.isPendingSync
 
     ElevatedCard(
         onClick = { if (!isLocked) onClick() },
@@ -259,7 +328,8 @@ private fun WorkerDetailContent(
     onSkipAddress: () -> Unit,
     onPhotoTaken: (File) -> Unit
 ) {
-    val isDone = !address.localPhotoPath.isNullOrBlank() || 
+    // Для рабочего: скрываем кнопки только если ремонт выполнен (фото в очереди или уже на сервере)
+    val isDone = (!address.localPhotoPath.isNullOrBlank() && address.isPendingSync) || 
                  address.status == AddressStatus.REPAIR_DONE
     Column(
         modifier = Modifier
@@ -278,7 +348,7 @@ private fun WorkerDetailContent(
                 shape = MaterialTheme.shapes.medium
             ) {
                 Column(Modifier.padding(16.dp)) {
-                    val statusText = if (!address.localPhotoPath.isNullOrBlank()) 
+                    val statusText = if (address.isPendingSync)
                         "Фото ремонта ожидает интернета" 
                     else 
                         "Фото ремонта отправлено на сервер"

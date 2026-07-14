@@ -37,6 +37,8 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.LocationSettingsRequest
 import com.google.android.gms.location.Priority
+import android.os.Environment
+import android.media.MediaScannerConnection
 import java.io.File
 
 /**
@@ -59,6 +61,8 @@ fun CameraCaptureButton(
     ) { success ->
         val file = pendingFile
         if (success && file != null) {
+            // Уведомляем систему о новом файле, чтобы он появился в галерее
+            MediaScannerConnection.scanFile(context, arrayOf(file.absolutePath), null, null)
             previewUri = Uri.fromFile(file)
             onPhotoTaken(file)
         }
@@ -155,6 +159,10 @@ fun CameraCaptureButton(
 }
 
 private fun createTempImageFile(context: Context): File {
-    val dir = File(context.cacheDir, "photos").apply { mkdirs() }
-    return File.createTempFile("capture_", ".jpg", dir)
+    val dir = File(
+        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+        "iMedia_Inspector"
+    ).apply { mkdirs() }
+    val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())
+    return File(dir, "IMG_${timestamp}.jpg")
 }

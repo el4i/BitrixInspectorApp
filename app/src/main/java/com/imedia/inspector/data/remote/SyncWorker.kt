@@ -15,6 +15,10 @@ class SyncWorker(
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
+        val sessionManager = AppModule.sessionManager
+        val isManualRun = inputData.getString("sync_type") == "manual"
+        val isAutoUploadEnabled = sessionManager.isAutoUploadEnabled()
+
         val dao = AppModule.database.addressDao()
         val pendingList = dao.getAllPendingUploads()
 
@@ -23,6 +27,16 @@ class SyncWorker(
         var allSuccess = true
         for (pending in pendingList) {
             try {
+                // ЛОГИКА РАЗДЕЛЕНИЯ (Metadata vs Photo):
+                val hasPhoto = !pending.photoFilePath.isNullOrBlank()
+                
+                // Пропускаем загрузку фото, если автозагрузка выключена И это не ручной запуск.
+                // При этом "Пропуски" (где нет фото) уходят ВСЕГДА.
+                if (hasPhoto && !isAutoUploadEnabled && !isManualRun) {
+                    println("DEBUG_B24: SyncWorker - Пропуск фото для ${pending.addressId} (ждем ручной выгрузки).")
+                    continue
+                }
+
                 // ПРОВЕРКА: Если элемент уже удален (например, updateAddress успел отправить)
                 val stillExists = dao.getPendingUploadById(pending.localId) != null
                 if (!stillExists) {
@@ -64,13 +78,11 @@ class SyncWorker(
                 if (success) {
                     dao.deletePendingUpload(pending.localId)
                     // ОБНОВЛЯЕМ статус в основной таблице адресов, чтобы UI узнал об успехе
-                    // и очищаем localPhotoPath, так как файл будет удален
-                    dao.updateAddressStatus(pending.addressId, pending.status, null)
+                    // localPhotoPath НЕ очищаем, так как хотим видеть фото в приложении/галерее.
+                    // isPendingSync ставим в FALSE, так как загрузка прошла успешно.
+                    dao.updateAddressStatus(pending.addressId, pending.status, pending.photoFilePath, false)
 
-                    // Удаляем локальный файл после успешной загрузки, чтобы не занимать место
-                    if (photoFile != null && photoFile.exists()) {
-                        photoFile.delete()
-                    }
+                    // ФАЙЛ БОЛЬШЕ НЕ УДАЛЯЕМ
                 } else {
                     allSuccess = false
                 }

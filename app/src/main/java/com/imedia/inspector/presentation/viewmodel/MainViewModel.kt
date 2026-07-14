@@ -8,6 +8,7 @@ import com.imedia.inspector.domain.model.AddressItem
 import com.imedia.inspector.domain.model.AddressStatus
 import com.imedia.inspector.domain.model.AppScreenState
 import com.imedia.inspector.domain.model.BreakageReason
+import com.imedia.inspector.domain.model.ElevatorSkipReason
 import com.imedia.inspector.domain.model.Contact
 import com.imedia.inspector.domain.model.InspectorMode
 import com.imedia.inspector.domain.model.UserRole
@@ -15,6 +16,7 @@ import com.imedia.inspector.domain.model.WorkerMode
 import com.imedia.inspector.util.FileNameUtils
 import com.imedia.inspector.util.SessionManager
 import com.imedia.inspector.util.LocationClient
+import com.imedia.inspector.di.AppModule
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -36,6 +38,9 @@ class MainViewModel(
 
     private val _events = MutableStateFlow<String?>(null)
     val events: StateFlow<String?> = _events.asStateFlow()
+
+    private val _isAutoUpload = MutableStateFlow(sessionManager.isAutoUploadEnabled())
+    val isAutoUpload: StateFlow<Boolean> = _isAutoUpload.asStateFlow()
 
     private var contact: Contact? = null
     private var observeJob: Job? = null
@@ -251,13 +256,18 @@ class MainViewModel(
         _uiState.value = current.copy(mode = InspectorMode.AWAITING_PHOTO)
     }
 
-    fun skipAddressElevatorBroken() {
+    fun skipAddressElevatorBroken(reason: ElevatorSkipReason) {
         val current = (_uiState.value as? AppScreenState.InspectorFlow) ?: return
         val item = current.selected ?: return
+        val c = contact ?: return
         viewModelScope.launch {
             try {
-                repository.updateAddress(item, AddressUpdatePatch(status = AddressStatus.SKIPPED_INSPECTOR))
-                _events.value = "Адрес пропущен."
+                repository.updateAddress(item, AddressUpdatePatch(
+                    status = AddressStatus.SKIPPED_INSPECTOR,
+                    handledByContactId = c.id,
+                    breakageReason = reason.label
+                ))
+                _events.value = "Адрес пропущен: ${reason.label}"
                 loadInspectorAddress(skipped = false)
             } catch (e: Exception) {
                 _events.value = "Ошибка: ${e.message}"
@@ -322,14 +332,8 @@ class MainViewModel(
                     _uiState.value = currentRole.copy(addresses = list)
                 }
 
-                // Авто-переход к следующему
-                val next = list.find { it.localPhotoPath.isNullOrBlank() && it.status == AddressStatus.NEW }
-
-                if (next != null) {
-                    selectAddress(next)
-                } else {
-                    deselectAddress()
-                }
+                // После сохранения всегда выходим в список
+                deselectAddress()
             } catch (e: Exception) {
                 _events.value = "Ошибка: ${e.message}"
             }
@@ -419,15 +423,8 @@ class MainViewModel(
                     _uiState.value = flow.copy(addresses = list)
                 }
 
-                // Авто-переход к следующему
-                val next = list.filter { it.localPhotoPath.isNullOrBlank() && it.status == AddressStatus.SENT_TO_REPAIR }
-                    .firstOrNull()
-
-                if (next != null) {
-                    selectAddress(next)
-                } else {
-                    deselectAddress()
-                }
+                // После сохранения всегда выходим в список
+                deselectAddress()
             } catch (e: Exception) {
                 _events.value = "Ошибка: ${e.message}"
             }
@@ -436,4 +433,17 @@ class MainViewModel(
 
     fun consumeEvent() { _events.value = null }
     fun reset() { refresh() }
+
+    fun toggleAutoUpload(enabled: Boolean) {
+        sessionManager.setAutoUploadEnabled(enabled)
+        _isAutoUpload.value = enabled
+        if (enabled) {
+            AppModule.scheduleSync()
+        }
+    }
+
+    fun manualSync() {
+        _events.value = "Синхронизация запущена..."
+        AppModule.scheduleSync(forceManual = true)
+    }
 }
