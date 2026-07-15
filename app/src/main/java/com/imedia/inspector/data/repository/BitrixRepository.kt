@@ -44,6 +44,7 @@ interface BitrixRepository {
     suspend fun getCachedContact(deviceUserId: String): Contact?
     suspend fun saveContactToCache(deviceUserId: String, contact: Contact)
     suspend fun closeLeadIfExists(deviceUserId: String)
+    suspend fun checkIsBlocked(): Boolean
 }
 
 /** То, что реально меняется при updList() в разных ветках сценария. */
@@ -338,23 +339,33 @@ class BitrixRepositoryImpl(
             try {
                 println("DEBUG_B24: Запрос адресов со статусом $status для маршрута $route")
                 val routeFilter = if (route.size == 1) route[0] else route
-                val params = BitrixParamsBuilder.build(
-                    mapOf(
-                        "IBLOCK_TYPE_ID" to IBLOCK_TYPE_LISTS,
-                        "IBLOCK_ID" to IBLOCK_ID_LISTS,
-                        "ELEMENT_ORDER" to mapOf("PROPERTY_109" to "ASC", "PROPERTY_107" to "ASC"),
-                        "FILTER" to mapOf(
-                            "PROPERTY_111" to routeFilter,
-                            "PROPERTY_109" to status
+                
+                var start: Int? = 0
+                while (start != null) {
+                    val params = BitrixParamsBuilder.build(
+                        mapOf(
+                            "IBLOCK_TYPE_ID" to IBLOCK_TYPE_LISTS,
+                            "IBLOCK_ID" to IBLOCK_ID_LISTS,
+                            "ELEMENT_ORDER" to mapOf("PROPERTY_109" to "ASC", "PROPERTY_107" to "ASC"),
+                            "FILTER" to mapOf(
+                                "PROPERTY_111" to routeFilter,
+                                "PROPERTY_109" to status
+                            ),
+                            "start" to start
                         )
                     )
-                )
-                
-                val response = api.listElementGet(params)
-                isAnyRequestSuccessful = true // Запрос прошел, сервер ответил
-                
-                if (response.result != null) {
-                    allElements.addAll(response.result.map { it.toEntity(isWorker) })
+                    
+                    val response = api.listElementGet(params)
+                    isAnyRequestSuccessful = true // Запрос прошел, сервер ответил
+                    
+                    if (response.result != null) {
+                        allElements.addAll(response.result.map { it.toEntity(isWorker) })
+                    }
+                    
+                    start = response.next
+                    if (start != null) {
+                        println("DEBUG_B24: Загрузка следующей страницы: $start")
+                    }
                 }
             } catch (e: Exception) {
                 println("DEBUG_B24: Ошибка при запросе ($status): ${e.message}")
@@ -563,6 +574,30 @@ class BitrixRepositoryImpl(
             }
         } catch (e: Exception) {
             println("DEBUG_B24: Ошибка при автоматическом закрытии лида: ${e.message}")
+        }
+    }
+
+    override suspend fun checkIsBlocked(): Boolean {
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val client = okhttp3.OkHttpClient()
+                // Используем новый ID Gist: ecb646e3c4100032616bd915188f43ae
+                val url = "https://gist.githubusercontent.com/el4i/777a146db9e2120aafc92a23b91662e0/raw/gistfile1.txt?t=${System.currentTimeMillis()}"
+                println("DEBUG_B24: gist url: $url")
+                val request = okhttp3.Request.Builder()
+                    .url(url)
+                    .cacheControl(okhttp3.CacheControl.FORCE_NETWORK) // Принудительно идем в сеть
+                    .build()
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@withContext false
+                    val body = response.body?.string()?.lowercase() ?: ""
+                    println("DEBUG_B24: Проверка блокировки. Ответ сервера: $body")
+                    body.contains("blocked")
+                }
+            } catch (e: Exception) {
+                println("DEBUG_B24: Ошибка проверки блокировки: ${e.message}")
+                false
+            }
         }
     }
 }

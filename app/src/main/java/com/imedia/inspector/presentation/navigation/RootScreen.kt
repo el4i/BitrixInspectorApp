@@ -4,10 +4,11 @@ import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -28,7 +29,7 @@ fun RootScreen(context: Context, viewModel: MainViewModel) {
     val state by viewModel.uiState.collectAsState()
     val event by viewModel.events.collectAsState()
     val isAutoUpload by viewModel.isAutoUpload.collectAsState()
-    val isGpsEnabled by viewModel.isGpsEnabled.collectAsState()
+    val searchQuery by viewModel.searchQuery.collectAsState()
 
     event?.let { message ->
         LaunchedEffect(message) {
@@ -39,7 +40,11 @@ fun RootScreen(context: Context, viewModel: MainViewModel) {
 
     when (val s = state) {
         AppScreenState.Loading -> LoadingBox()
-        AppScreenState.LoggedOut -> AuthScreen(onLogin = viewModel::login)
+        AppScreenState.Blocked -> BlockedScreen(onRetry = viewModel::refresh)
+        AppScreenState.LoggedOut -> AuthScreen(
+            onLogin = viewModel::login,
+            onRegister = { id -> viewModel.goToRegistration(id) }
+        )
         AppScreenState.NeedRegistration -> NeedRegistrationScreen(
             onRegisterClick = { f, l, e -> viewModel.register(f, l, e) },
             onRefresh = viewModel::refresh,
@@ -70,8 +75,8 @@ fun RootScreen(context: Context, viewModel: MainViewModel) {
             onManualSync = viewModel::manualSync,
             isAutoUpload = isAutoUpload,
             onToggleAutoUpload = viewModel::toggleAutoUpload,
-            isGpsEnabled = isGpsEnabled,
-            onToggleGps = viewModel::toggleGps
+            searchQuery = searchQuery,
+            onSearchQueryChange = viewModel::setSearchQuery
         )
         is AppScreenState.WorkerFlow -> WorkerScreen(
             context = context,
@@ -91,8 +96,8 @@ fun RootScreen(context: Context, viewModel: MainViewModel) {
             onManualSync = viewModel::manualSync,
             isAutoUpload = isAutoUpload,
             onToggleAutoUpload = viewModel::toggleAutoUpload,
-            isGpsEnabled = isGpsEnabled,
-            onToggleGps = viewModel::toggleGps
+            searchQuery = searchQuery,
+            onSearchQueryChange = viewModel::setSearchQuery
         )
         is AppScreenState.Error -> ErrorBox(
             message = s.message, 
@@ -106,6 +111,23 @@ fun RootScreen(context: Context, viewModel: MainViewModel) {
 private fun LoadingBox() {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         CircularProgressIndicator()
+    }
+}
+
+@Composable
+private fun BlockedScreen(onRetry: () -> Unit) {
+    Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = "Приложение временно не отвечает",
+                style = MaterialTheme.typography.headlineSmall,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            Spacer(Modifier.height(24.dp))
+            Button(onClick = onRetry) {
+                Text("Обновить")
+            }
+        }
     }
 }
 

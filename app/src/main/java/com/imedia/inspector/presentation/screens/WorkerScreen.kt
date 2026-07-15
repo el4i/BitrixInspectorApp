@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material3.*
@@ -52,8 +53,8 @@ fun WorkerScreen(
     onManualSync: () -> Unit,
     isAutoUpload: Boolean,
     onToggleAutoUpload: (Boolean) -> Unit,
-    isGpsEnabled: Boolean,
-    onToggleGps: (Boolean) -> Unit
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit
 ) {
     val pagerState = rememberPagerState(initialPage = selectedTab) { 3 }
 
@@ -91,7 +92,6 @@ fun WorkerScreen(
                         
                         var showMenu by remember { mutableStateOf(false) }
                         var showAutoUploadConfirm by remember { mutableStateOf(false) }
-                        var showGpsConfirm by remember { mutableStateOf(false) }
 
                         if (showAutoUploadConfirm) {
                             AlertDialog(
@@ -106,23 +106,6 @@ fun WorkerScreen(
                                 },
                                 dismissButton = {
                                     TextButton(onClick = { showAutoUploadConfirm = false }) { Text("Отмена") }
-                                }
-                            )
-                        }
-
-                        if (showGpsConfirm) {
-                            AlertDialog(
-                                onDismissRequest = { showGpsConfirm = false },
-                                title = { Text("Записывать GPS?") },
-                                text = { Text("При включении этой функции приложение будет требовать включения GPS и сохранять координаты места съемки в Битрикс24.") },
-                                confirmButton = {
-                                    Button(onClick = {
-                                        onToggleGps(true)
-                                        showGpsConfirm = false
-                                    }) { Text("Включить") }
-                                },
-                                dismissButton = {
-                                    TextButton(onClick = { showGpsConfirm = false }) { Text("Отмена") }
                                 }
                             )
                         }
@@ -148,24 +131,6 @@ fun WorkerScreen(
                                 },
                                 onClick = { }
                             )
-                            HorizontalDivider()
-                            DropdownMenuItem(
-                                text = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text("Записывать GPS")
-                                        Spacer(Modifier.weight(1f))
-                                        Switch(checked = isGpsEnabled, onCheckedChange = { checked ->
-                                            if (checked) {
-                                                showGpsConfirm = true
-                                            } else {
-                                                onToggleGps(false)
-                                            }
-                                            showMenu = false
-                                        })
-                                    }
-                                },
-                                onClick = { }
-                            )
                         }
                     }
                 }
@@ -174,6 +139,22 @@ fun WorkerScreen(
     ) { padding ->
         if (selected == null) {
             Column(Modifier.fillMaxSize().padding(padding)) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchQueryChange,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    placeholder = { Text("Поиск по названию или ID") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.medium,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                    )
+                )
+
                 ScrollableTabRow(selectedTabIndex = pagerState.currentPage, edgePadding = 16.dp) {
                     Tab(
                         selected = pagerState.currentPage == 0,
@@ -226,7 +207,6 @@ fun WorkerScreen(
                 padding = padding,
                 context = context,
                 address = selected,
-                isGpsEnabled = isGpsEnabled,
                 onSkipAddress = onSkipAddress,
                 onPhotoTaken = onPhotoTaken
             )
@@ -273,8 +253,6 @@ private fun WorkerListContent(
             ) {
                 items(addresses.size) { index ->
                     val item = addresses[index]
-                    // Для ремонтников убираем блокировку очереди (любой адрес доступен всегда)
-                    val isLocked = false
                     WorkerAddressCard(
                         item = item, 
                         showPendingStatus = selectedTab == 2,
@@ -335,6 +313,11 @@ private fun WorkerAddressCard(
                         else -> MaterialTheme.colorScheme.onSurface
                     }
                 )
+                Text(
+                    text = "Маршрут: ${item.routeCodes.firstOrNull() ?: ""} | № ${item.property107 ?: ""}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 when {
                     isUploaded -> {
                         Text("Ремонт подтвержден (в Битриксе)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
@@ -356,7 +339,6 @@ private fun WorkerDetailContent(
     padding: PaddingValues,
     context: Context,
     address: AddressItem,
-    isGpsEnabled: Boolean,
     onSkipAddress: () -> Unit,
     onPhotoTaken: (File) -> Unit
 ) {
@@ -426,7 +408,6 @@ private fun WorkerDetailContent(
             CameraCaptureButton(
                 context = context,
                 label = "Сфотографировать готовый ремонт",
-                isGpsRequired = isGpsEnabled,
                 onPhotoTaken = onPhotoTaken
             )
             

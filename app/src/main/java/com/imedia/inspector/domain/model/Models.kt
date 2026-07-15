@@ -68,6 +68,7 @@ data class AddressItem(
 sealed interface AppScreenState {
     data object Loading : AppScreenState
     data object LoggedOut : AppScreenState
+    data object Blocked : AppScreenState
     data object NeedRegistration : AppScreenState
     data object PendingRegistration : AppScreenState
     data class InspectorFlow(

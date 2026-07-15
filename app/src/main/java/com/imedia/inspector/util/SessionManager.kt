@@ -26,13 +26,5 @@ class SessionManager(context: Context) {
         prefs.edit().putBoolean("auto_upload", enabled).apply()
     }
 
-    fun isGpsTrackingEnabled(): Boolean {
-        return prefs.getBoolean("gps_tracking", false) // По умолчанию ВЫКЛЮЧЕНО
-    }
-
-    fun setGpsTrackingEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean("gps_tracking", enabled).apply()
-    }
-
     fun isLoggedIn(): Boolean = getUserId() != null
 }

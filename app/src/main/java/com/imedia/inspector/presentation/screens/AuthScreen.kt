@@ -9,7 +9,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun AuthScreen(onLogin: (String) -> Unit) {
+fun AuthScreen(onLogin: (String) -> Unit, onRegister: (String) -> Unit) {
     var userId by remember { mutableStateOf("") }
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -36,6 +36,13 @@ fun AuthScreen(onLogin: (String) -> Unit) {
                 shape = MaterialTheme.shapes.medium
             ) {
                 Text("Войти")
+            }
+            Spacer(Modifier.height(8.dp))
+            TextButton(
+                onClick = { onRegister(userId) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Регистрация")
             }
         }
     }

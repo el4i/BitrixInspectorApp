@@ -42,18 +42,29 @@ class MainViewModel(
     private val _isAutoUpload = MutableStateFlow(sessionManager.isAutoUploadEnabled())
     val isAutoUpload: StateFlow<Boolean> = _isAutoUpload.asStateFlow()
 
-    private val _isGpsEnabled = MutableStateFlow(sessionManager.isGpsTrackingEnabled())
-    val isGpsEnabled: StateFlow<Boolean> = _isGpsEnabled.asStateFlow()
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
     private var contact: Contact? = null
     private var observeJob: Job? = null
 
     init {
-        val savedId = sessionManager.getUserId()
-        if (savedId == null) {
-            _uiState.value = AppScreenState.LoggedOut
-        } else {
-            refresh()
+        checkStatusAndStart()
+    }
+
+    private fun checkStatusAndStart() {
+        viewModelScope.launch {
+            _uiState.value = AppScreenState.Loading
+            if (repository.checkIsBlocked()) {
+                _uiState.value = AppScreenState.Blocked
+            } else {
+                val savedId = sessionManager.getUserId()
+                if (savedId == null) {
+                    _uiState.value = AppScreenState.LoggedOut
+                } else {
+                    refresh()
+                }
+            }
         }
     }
 
@@ -89,6 +100,12 @@ class MainViewModel(
         viewModelScope.launch {
             val previousState = _uiState.value
             _uiState.value = AppScreenState.Loading
+            
+            if (repository.checkIsBlocked()) {
+                _uiState.value = AppScreenState.Blocked
+                return@launch
+            }
+
             try {
                 val c = repository.getContact(userId)
                 contact = c
@@ -97,7 +114,16 @@ class MainViewModel(
                     repository.closeLeadIfExists(userId)
                     loadForRole(c)
                 } else {
-                    checkRegistrationStatus()
+                    // Если пользователь не найден как контакт, проверяем, есть ли лид (заявка)
+                    val leadId = repository.getLeadId(userId)
+                    if (leadId > 0) {
+                        _uiState.value = AppScreenState.PendingRegistration
+                    } else {
+                        // Если ни контакта, ни лида — выводим ошибку и остаемся на входе
+                        _events.value = "Пользователь с ID $userId не найден. Пожалуйста, пройдите регистрацию."
+                        sessionManager.logout() // Сбрасываем неверный ID
+                        _uiState.value = AppScreenState.LoggedOut
+                    }
                 }
             } catch (e: Exception) {
                 val cached = repository.getCachedContact(userId)
@@ -128,11 +154,25 @@ class MainViewModel(
         }
     }
 
+    fun goToRegistration(preferredId: String) {
+        if (preferredId.isNotBlank()) {
+            sessionManager.saveUserId(preferredId)
+        }
+        _uiState.value = AppScreenState.NeedRegistration
+    }
+
     fun register(firstName: String, lastName: String, email: String) {
-        val userId = sessionManager.getUserId() ?: return
         viewModelScope.launch {
             val previousState = _uiState.value
             _uiState.value = AppScreenState.Loading
+            
+            // Если ID не был введен ранее, используем временный уникальный
+            var userId = sessionManager.getUserId()
+            if (userId == null) {
+                userId = "reg_" + java.util.UUID.randomUUID().toString().take(8)
+                sessionManager.saveUserId(userId)
+            }
+
             try {
                 val existingLeadId = repository.getLeadId(userId)
                 if (existingLeadId == 0) {
@@ -155,16 +195,61 @@ class MainViewModel(
         observeJob?.cancel()
         observeJob = viewModelScope.launch {
             repository.observeAddresses(isWorker).collect { list ->
-                val current = _uiState.value
-                if (current is AppScreenState.InspectorFlow) {
-                    val updatedSelected = list.find { it.id == current.selected?.id }
-                    _uiState.value = current.copy(addresses = list, selected = updatedSelected)
-                } else if (current is AppScreenState.WorkerFlow) {
-                    val updatedSelected = list.find { it.id == current.selected?.id }
-                    _uiState.value = current.copy(addresses = list, selected = updatedSelected)
-                }
+                updateStateWithList(list)
             }
         }
+    }
+
+    private fun updateStateWithList(list: List<AddressItem>) {
+        val query = _searchQuery.value.lowercase()
+        val filteredList = if (query.isBlank()) {
+            list
+        } else {
+            list.filter { 
+                it.name.lowercase().contains(query) || 
+                it.id.contains(query) ||
+                it.property107?.contains(query) == true
+            }
+        }
+        val sortedList = sortAddresses(filteredList)
+        
+        val current = _uiState.value
+        if (current is AppScreenState.InspectorFlow) {
+            val updatedSelected = sortedList.find { it.id == current.selected?.id }
+            _uiState.value = current.copy(addresses = sortedList, selected = updatedSelected)
+        } else if (current is AppScreenState.WorkerFlow) {
+            val updatedSelected = sortedList.find { it.id == current.selected?.id }
+            _uiState.value = current.copy(addresses = sortedList, selected = updatedSelected)
+        }
+    }
+
+    fun setSearchQuery(query: String) {
+        _searchQuery.value = query
+        // Пересчитываем текущее состояние при изменении поиска
+        viewModelScope.launch {
+            val c = contact ?: return@launch
+            val isWorker = c.role == UserRole.WORKER
+            // Мы не можем легко получить текущий список из Flow без коллектора, 
+            // поэтому просто триггерим обновление через репозиторий (он закеширован)
+            val list = if (isWorker) repository.getAllRepairAddresses(c.route, false) 
+                       else repository.getAllAddresses(c.route, false)
+            updateStateWithList(list)
+        }
+    }
+
+    private fun sortAddresses(list: List<AddressItem>): List<AddressItem> {
+        val userRoutes = contact?.route ?: emptyList()
+        return list.sortedWith(compareBy<AddressItem> { item ->
+            // 1. Сначала сортируем по индексу маршрута в списке пользователя
+            val routeIdx = item.routeCodes.firstNotNullOfOrNull { r ->
+                val idx = userRoutes.indexOf(r)
+                if (idx != -1) idx else null
+            } ?: Int.MAX_VALUE
+            routeIdx
+        }.thenBy { 
+            // 2. Затем внутри маршрута сортируем по порядковому номеру (как число)
+            it.property107?.toDoubleOrNull() ?: Double.MAX_VALUE 
+        })
     }
 
     private suspend fun loadForRole(c: Contact) {
@@ -227,7 +312,7 @@ class MainViewModel(
             _uiState.value = AppScreenState.Loading
             try {
                 // Загружаем все, что относится к текущему пользователю
-                val list = repository.getAllAddresses(c.route, false, forceRefresh = true)
+                val list = sortAddresses(repository.getAllAddresses(c.route, false, forceRefresh = true))
                 
                 _uiState.value = AppScreenState.InspectorFlow(
                     addresses = list,
@@ -303,19 +388,14 @@ class MainViewModel(
         val c = contact ?: return
         viewModelScope.launch {
             try {
-                val location = if (_isGpsEnabled.value) {
-                    println("DEBUG_B24: Запрос GPS координат...")
-                    val loc = locationClient.getCurrentLocation()
-                    if (loc == null) {
-                        _events.value = "Включите GPS для записи координат!"
-                        println("DEBUG_B24: GPS результат: null (выключен или нет сигнала)")
-                    } else {
-                        println("DEBUG_B24: GPS результат: lat=${loc.latitude}, lon=${loc.longitude}")
-                    }
-                    loc
+                println("DEBUG_B24: Запрос GPS координат...")
+                val location = locationClient.getCurrentLocation()
+                
+                if (location == null) {
+                    _events.value = "Включите GPS для записи координат!"
+                    println("DEBUG_B24: GPS результат: null (выключен или нет сигнала)")
                 } else {
-                    println("DEBUG_B24: Запись GPS отключена в настройках.")
-                    null
+                    println("DEBUG_B24: GPS результат: lat=${location.latitude}, lon=${location.longitude}")
                 }
                 
                 val ext = FileNameUtils.extensionFromFile(photoFile)
@@ -334,7 +414,7 @@ class MainViewModel(
                 _events.value = "Фото сохранено."
                 
                 // МГНОВЕННОЕ ОБНОВЛЕНИЕ СПИСКА В UI
-                val list = repository.getAllAddresses(c.route, false, forceRefresh = false)
+                val list = sortAddresses(repository.getAllAddresses(c.route, false, forceRefresh = false))
                 val currentRole = _uiState.value
                 if (currentRole is AppScreenState.InspectorFlow) {
                     _uiState.value = currentRole.copy(addresses = list)
@@ -358,7 +438,7 @@ class MainViewModel(
             val previousState = _uiState.value
             _uiState.value = AppScreenState.Loading
             try {
-                val list = repository.getAllRepairAddresses(c.route, false, forceRefresh = true)
+                val list = sortAddresses(repository.getAllRepairAddresses(c.route, false, forceRefresh = true))
                 
                 _uiState.value = AppScreenState.WorkerFlow(
                     addresses = list,
@@ -400,19 +480,14 @@ class MainViewModel(
         val c = contact ?: return
         viewModelScope.launch {
             try {
-                val location = if (_isGpsEnabled.value) {
-                    println("DEBUG_B24: Запрос GPS координат...")
-                    val loc = locationClient.getCurrentLocation()
-                    if (loc == null) {
-                        _events.value = "Включите GPS для записи координат!"
-                        println("DEBUG_B24: GPS результат: null (выключен или нет сигнала)")
-                    } else {
-                        println("DEBUG_B24: GPS результат: lat=${loc.latitude}, lon=${loc.longitude}")
-                    }
-                    loc
+                println("DEBUG_B24: Запрос GPS координат...")
+                val location = locationClient.getCurrentLocation()
+                
+                if (location == null) {
+                    _events.value = "Включите GPS для записи координат!"
+                    println("DEBUG_B24: GPS результат: null (выключен или нет сигнала)")
                 } else {
-                    println("DEBUG_B24: Запись GPS отключена в настройках.")
-                    null
+                    println("DEBUG_B24: GPS результат: lat=${location.latitude}, lon=${location.longitude}")
                 }
                 
                 val ext = FileNameUtils.extensionFromFile(photoFile)
@@ -430,7 +505,7 @@ class MainViewModel(
                 ))
                 _events.value = "Фото сохранено."
 
-                val list = repository.getAllRepairAddresses(c.route, false, forceRefresh = false)
+                val list = sortAddresses(repository.getAllRepairAddresses(c.route, false, forceRefresh = false))
                 val flow = _uiState.value as? AppScreenState.WorkerFlow
                 if (flow != null) {
                     _uiState.value = flow.copy(addresses = list)
@@ -453,11 +528,6 @@ class MainViewModel(
         if (enabled) {
             AppModule.scheduleSync()
         }
-    }
-
-    fun toggleGps(enabled: Boolean) {
-        sessionManager.setGpsTrackingEnabled(enabled)
-        _isGpsEnabled.value = enabled
     }
 
     fun manualSync() {

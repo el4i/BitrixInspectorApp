@@ -51,7 +51,6 @@ import java.io.File
 fun CameraCaptureButton(
     context: Context,
     label: String = "Сделать фото",
-    isGpsRequired: Boolean = false,
     onPhotoTaken: (File) -> Unit
 ) {
     var pendingFile by remember { mutableStateOf<File?>(null) }
@@ -84,14 +83,6 @@ fun CameraCaptureButton(
     }
 
     fun launchCameraWithCheck() {
-        if (!isGpsRequired) {
-            val file = createTempImageFile(context)
-            pendingFile = file
-            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-            launcher.launch(uri)
-            return
-        }
-
         val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         val isGpsEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
                 locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
@@ -123,8 +114,12 @@ fun CameraCaptureButton(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val cameraGranted = permissions[Manifest.permission.CAMERA] ?: false
-        if (cameraGranted) {
+        val locationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+        
+        if (cameraGranted && locationGranted) {
             launchCameraWithCheck()
+        } else {
+            Toast.makeText(context, "Необходимы разрешения на камеру и GPS!", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -132,20 +127,18 @@ fun CameraCaptureButton(
         Button(
             onClick = {
                 val hasCameraPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-                
-                val hasLocationPermission = if (isGpsRequired) {
-                    ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-                } else true
+                val hasLocationPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
                 if (hasCameraPermission && hasLocationPermission) {
                     launchCameraWithCheck()
                 } else {
-                    val permissions = mutableListOf(Manifest.permission.CAMERA)
-                    if (isGpsRequired) {
-                        permissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
-                        permissions.add(Manifest.permission.ACCESS_COARSE_LOCATION)
-                    }
-                    permissionLauncher.launch(permissions.toTypedArray())
+                    permissionLauncher.launch(
+                        arrayOf(
+                            Manifest.permission.CAMERA,
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION
+                        )
+                    )
                 }
             },
             modifier = Modifier.fillMaxWidth()

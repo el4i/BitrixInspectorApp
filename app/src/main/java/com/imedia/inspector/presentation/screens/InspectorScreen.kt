@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -58,8 +59,8 @@ fun InspectorScreen(
     onManualSync: () -> Unit,
     isAutoUpload: Boolean,
     onToggleAutoUpload: (Boolean) -> Unit,
-    isGpsEnabled: Boolean,
-    onToggleGps: (Boolean) -> Unit
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit
 ) {
     val pagerState = rememberPagerState(initialPage = selectedTab) { 4 }
 
@@ -99,7 +100,6 @@ fun InspectorScreen(
                         
                         var showMenu by remember { mutableStateOf(false) }
                         var showAutoUploadConfirm by remember { mutableStateOf(false) }
-                        var showGpsConfirm by remember { mutableStateOf(false) }
 
                         if (showAutoUploadConfirm) {
                             AlertDialog(
@@ -114,23 +114,6 @@ fun InspectorScreen(
                                 },
                                 dismissButton = {
                                     TextButton(onClick = { showAutoUploadConfirm = false }) { Text("Отмена") }
-                                }
-                            )
-                        }
-
-                        if (showGpsConfirm) {
-                            AlertDialog(
-                                onDismissRequest = { showGpsConfirm = false },
-                                title = { Text("Записывать GPS?") },
-                                text = { Text("При включении этой функции приложение будет требовать включения GPS и сохранять координаты места съемки в Битрикс24.") },
-                                confirmButton = {
-                                    Button(onClick = {
-                                        onToggleGps(true)
-                                        showGpsConfirm = false
-                                    }) { Text("Включить") }
-                                },
-                                dismissButton = {
-                                    TextButton(onClick = { showGpsConfirm = false }) { Text("Отмена") }
                                 }
                             )
                         }
@@ -156,24 +139,6 @@ fun InspectorScreen(
                                 },
                                 onClick = { }
                             )
-                            HorizontalDivider()
-                            DropdownMenuItem(
-                                text = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text("Записывать GPS")
-                                        Spacer(Modifier.weight(1f))
-                                        Switch(checked = isGpsEnabled, onCheckedChange = { checked ->
-                                            if (checked) {
-                                                showGpsConfirm = true
-                                            } else {
-                                                onToggleGps(false)
-                                            }
-                                            showMenu = false
-                                        })
-                                    }
-                                },
-                                onClick = { }
-                            )
                         }
                     }
                 }
@@ -182,6 +147,22 @@ fun InspectorScreen(
     ) { padding ->
         if (selected == null) {
             Column(Modifier.fillMaxSize().padding(padding)) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchQueryChange,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    placeholder = { Text("Поиск по названию или ID") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.medium,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                    )
+                )
+
                 ScrollableTabRow(selectedTabIndex = pagerState.currentPage, edgePadding = 16.dp) {
                     Tab(
                         selected = pagerState.currentPage == 0,
@@ -242,7 +223,6 @@ fun InspectorScreen(
                 padding = padding,
                 context = context,
                 address = selected,
-                isGpsEnabled = isGpsEnabled,
                 onOpenSkipChooser = onOpenSkipChooser,
                 onPhotoTaken = onPhotoTaken
             )
@@ -298,12 +278,10 @@ private fun AddressListContent(
             ) {
                 items(addresses.size) { index ->
                     val item = addresses[index]
-                    val isLocked = selectedTab == 0 && index > 0
                     AddressItemCard(
                         item = item, 
-                        isLocked = isLocked,
                         showPendingStatus = selectedTab == 2,
-                        onClick = { if (!isLocked) onSelect(item) }
+                        onClick = { onSelect(item) }
                     )
                 }
             }
@@ -314,7 +292,6 @@ private fun AddressListContent(
 @Composable
 private fun AddressItemCard(
     item: AddressItem, 
-    isLocked: Boolean = false, 
     showPendingStatus: Boolean = true,
     onClick: () -> Unit
 ) {
@@ -326,10 +303,9 @@ private fun AddressItemCard(
     val isSkipped = item.status == AddressStatus.SKIPPED_INSPECTOR
 
     ElevatedCard(
-        onClick = { if (!isLocked) onClick() },
+        onClick = onClick,
         modifier = Modifier
-            .fillMaxWidth()
-            .alpha(if (isLocked) 0.5f else 1f),
+            .fillMaxWidth(),
         colors = when {
             isRepair -> CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f))
             isUploaded -> CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
@@ -346,7 +322,6 @@ private fun AddressItemCard(
                     isRepair -> Icons.Default.Build
                     isUploaded -> Icons.Default.CheckCircle
                     isPending -> Icons.Default.CloudUpload
-                    isLocked -> Icons.Default.Lock
                     else -> Icons.Default.LocationOn
                 },
                 contentDescription = null,
@@ -354,7 +329,6 @@ private fun AddressItemCard(
                     isRepair -> MaterialTheme.colorScheme.error
                     isUploaded -> MaterialTheme.colorScheme.primary
                     isPending -> MaterialTheme.colorScheme.secondary
-                    isLocked -> MaterialTheme.colorScheme.outline
                     else -> MaterialTheme.colorScheme.outline
                 }
             )
@@ -368,14 +342,15 @@ private fun AddressItemCard(
                         isRepair -> MaterialTheme.colorScheme.onErrorContainer
                         isUploaded -> MaterialTheme.colorScheme.onPrimaryContainer
                         isPending -> MaterialTheme.colorScheme.onSecondaryContainer
-                        isLocked -> MaterialTheme.colorScheme.outline
                         else -> MaterialTheme.colorScheme.onSurface
                     }
                 )
+                Text(
+                    text = "Маршрут: ${item.routeCodes.firstOrNull() ?: ""} | № ${item.property107 ?: ""}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 when {
-                    isLocked -> {
-                        Text("Сначала выполните предыдущий адрес", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-                    }
                     isPending -> {
                         Text("Ожидает интернета", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
                     }
@@ -389,9 +364,6 @@ private fun AddressItemCard(
                     isSkipped -> {
                         Text("Адрес пропущен: ${item.breakageReason ?: ""}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
                     }
-                    !item.property107.isNullOrBlank() -> {
-                        Text("№ ${item.property107}", style = MaterialTheme.typography.bodySmall)
-                    }
                 }
             }
         }
@@ -403,7 +375,6 @@ private fun AddressDetailContent(
     padding: PaddingValues,
     context: Context,
     address: AddressItem,
-    isGpsEnabled: Boolean,
     onOpenSkipChooser: () -> Unit,
     onPhotoTaken: (File) -> Unit
 ) {
@@ -462,7 +433,6 @@ private fun AddressDetailContent(
             CameraCaptureButton(
                 context = context,
                 label = "Сфотографировать и отправить",
-                isGpsRequired = isGpsEnabled,
                 onPhotoTaken = onPhotoTaken
             )
             
