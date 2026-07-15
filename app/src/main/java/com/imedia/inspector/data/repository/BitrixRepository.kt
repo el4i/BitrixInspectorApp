@@ -582,7 +582,7 @@ class BitrixRepositoryImpl(
             try {
                 val client = okhttp3.OkHttpClient()
                 // Используем новый ID Gist: ecb646e3c4100032616bd915188f43ae
-                val url = "https://gist.githubusercontent.com/el4i/777a146db9e2120aafc92a23b91662e0/raw/gistfile1.txt?t=${System.currentTimeMillis()}"
+                val url = "https://gist.githubusercontent.com/el4i/725851f76d6590d52475bc636ffac0e0/raw/gistfile1.txt?t=${System.currentTimeMillis()}"
                 println("DEBUG_B24: gist url: $url")
                 val request = okhttp3.Request.Builder()
                     .url(url)
