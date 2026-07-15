@@ -13,7 +13,7 @@ android {
         applicationId = "com.imedia.inspector"
         minSdk = 24
         targetSdk = 34
-        versionCode = 2
+        versionCode = 3
         versionName = "1.0"
     }
 

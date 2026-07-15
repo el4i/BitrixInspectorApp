@@ -623,14 +623,14 @@ class BitrixRepositoryImpl(
 
 private fun Any?.toB24String(): String? {
     if (this == null) return null
-    if (this is String) return this.replace(".0", "") // Очистка от Double-формата
     if (this is Map<*, *>) {
         if (this.isEmpty()) return null
         // Bitrix часто присылает свойства как {"ID_ЗНАЧЕНИЯ": "САМО_ЗНАЧЕНИЕ"}
-        // Берем первое попавшееся значение из мапы
         return this.values.firstOrNull()?.toB24String()
     }
     val str = this.toString()
+    // Убираем ".0" только если число целое (напр. "50.0" -> "50"), 
+    // но оставляем дробные (напр. "50.01" остается "50.01")
     return if (str.endsWith(".0")) str.substringBefore(".0") else str
 }
 
