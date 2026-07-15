@@ -6,8 +6,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Upgrade
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,6 +45,10 @@ fun RootScreen(context: Context, viewModel: MainViewModel) {
     when (val s = state) {
         AppScreenState.Loading -> LoadingBox()
         AppScreenState.Blocked -> BlockedScreen(onRetry = viewModel::refresh)
+        is AppScreenState.UpdateAvailable -> UpdateScreen(
+            info = s.info,
+            onDownload = { viewModel.downloadAndInstall(s.info, context) }
+        )
         AppScreenState.LoggedOut -> AuthScreen(
             onLogin = viewModel::login,
             onRegister = { id -> viewModel.goToRegistration(id) }
@@ -111,6 +119,48 @@ fun RootScreen(context: Context, viewModel: MainViewModel) {
 private fun LoadingBox() {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         CircularProgressIndicator()
+    }
+}
+
+@Composable
+private fun UpdateScreen(info: com.imedia.inspector.domain.model.VersionInfo, onDownload: () -> Unit) {
+    Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                imageVector = Icons.Default.Upgrade,
+                contentDescription = null,
+                modifier = Modifier.size(64.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "Доступна новая версия",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Версия: ${info.versionName}",
+                style = MaterialTheme.typography.bodyLarge
+            )
+            info.releaseNotes?.let {
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.height(32.dp))
+            Button(
+                onClick = onDownload,
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Text("Обновить приложение")
+            }
+        }
     }
 }
 

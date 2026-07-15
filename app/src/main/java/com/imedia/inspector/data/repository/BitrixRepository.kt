@@ -45,6 +45,7 @@ interface BitrixRepository {
     suspend fun saveContactToCache(deviceUserId: String, contact: Contact)
     suspend fun closeLeadIfExists(deviceUserId: String)
     suspend fun checkIsBlocked(): Boolean
+    suspend fun getLatestVersionInfo(): com.imedia.inspector.domain.model.VersionInfo?
 }
 
 /** То, что реально меняется при updList() в разных ветках сценария. */
@@ -597,6 +598,24 @@ class BitrixRepositoryImpl(
             } catch (e: Exception) {
                 println("DEBUG_B24: Ошибка проверки блокировки: ${e.message}")
                 false
+            }
+        }
+    }
+
+    override suspend fun getLatestVersionInfo(): com.imedia.inspector.domain.model.VersionInfo? {
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val client = okhttp3.OkHttpClient()
+                // Файл с версией будет лежать на вашем сервере рядом с прокси
+                val url = "https://reklama-lift-kazan.ru/bot/version.json?t=${System.currentTimeMillis()}"
+                val request = okhttp3.Request.Builder().url(url).build()
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@withContext null
+                    val body = response.body?.string() ?: return@withContext null
+                    com.google.gson.Gson().fromJson(body, com.imedia.inspector.domain.model.VersionInfo::class.java)
+                }
+            } catch (e: Exception) {
+                null
             }
         }
     }

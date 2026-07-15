@@ -71,6 +71,7 @@ sealed interface AppScreenState {
     data object Blocked : AppScreenState
     data object NeedRegistration : AppScreenState
     data object PendingRegistration : AppScreenState
+    data class UpdateAvailable(val info: VersionInfo) : AppScreenState
     data class InspectorFlow(
         val addresses: List<AddressItem>, // Весь список
         val selected: AddressItem?,
@@ -90,3 +91,11 @@ sealed interface AppScreenState {
 
 enum class InspectorMode { LIST_EMPTY, AWAITING_PHOTO, AWAITING_PHOTO_SKIPPED, CHOOSING_BREAKAGE }
 enum class WorkerMode { LIST_EMPTY, AWAITING_PHOTO, AWAITING_PHOTO_SKIPPED }
+
+/** Информация о новой версии приложения */
+data class VersionInfo(
+    val versionCode: Int,
+    val versionName: String,
+    val apkUrl: String,
+    val releaseNotes: String? = null
+)

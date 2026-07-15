@@ -17,6 +17,7 @@ import com.imedia.inspector.util.FileNameUtils
 import com.imedia.inspector.util.SessionManager
 import com.imedia.inspector.util.LocationClient
 import com.imedia.inspector.di.AppModule
+import com.imedia.inspector.domain.model.VersionInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,6 +31,7 @@ class MainViewModel(
     private val repository: BitrixRepository,
     private val sessionManager: SessionManager,
     private val locationClient: LocationClient,
+    private val currentVersionCode: Int,
     private val displayName: String
 ) : ViewModel() {
 
@@ -55,15 +57,69 @@ class MainViewModel(
     private fun checkStatusAndStart() {
         viewModelScope.launch {
             _uiState.value = AppScreenState.Loading
+            
+            // 1. ПРОВЕРКА БЛОКИРОВКИ
             if (repository.checkIsBlocked()) {
                 _uiState.value = AppScreenState.Blocked
+                return@launch
+            }
+
+            // 2. ПРОВЕРКА ОБНОВЛЕНИЙ (только если не заблокировано)
+            val update = try { repository.getLatestVersionInfo() } catch (e: Exception) { null }
+            println("DEBUG_B24: Проверка версии. Текущая: $currentVersionCode, На сервере: ${update?.versionCode}")
+            
+            if (update != null && update.versionCode > currentVersionCode) {
+                _uiState.value = AppScreenState.UpdateAvailable(update)
+                return@launch
+            }
+
+            // 3. ОБЫЧНЫЙ СТАРТ
+            val savedId = sessionManager.getUserId()
+            if (savedId == null) {
+                _uiState.value = AppScreenState.LoggedOut
             } else {
-                val savedId = sessionManager.getUserId()
-                if (savedId == null) {
-                    _uiState.value = AppScreenState.LoggedOut
-                } else {
-                    refresh()
+                refresh()
+            }
+        }
+    }
+
+    fun downloadAndInstall(info: VersionInfo, context: android.content.Context) {
+        viewModelScope.launch {
+            _events.value = "Скачивание обновления..."
+            try {
+                val file = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val client = okhttp3.OkHttpClient()
+                    val request = okhttp3.Request.Builder().url(info.apkUrl).build()
+                    val response = client.newCall(request).execute()
+                    if (!response.isSuccessful) return@withContext null
+                    
+                    val dir = File(context.getExternalFilesDir(null), "updates").apply { mkdirs() }
+                    val apkFile = File(dir, "update.apk")
+                    response.body?.byteStream()?.use { input ->
+                        apkFile.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    apkFile
                 }
+
+                if (file != null && file.exists()) {
+                    val uri = androidx.core.content.FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        file
+                    )
+                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                        setDataAndType(uri, "application/vnd.android.package-archive")
+                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                } else {
+                    _events.value = "Ошибка скачивания файла"
+                }
+            } catch (e: Exception) {
+                _events.value = "Ошибка при установке: ${e.message}"
             }
         }
     }

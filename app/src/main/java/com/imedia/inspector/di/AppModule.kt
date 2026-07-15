@@ -78,6 +78,20 @@ object AppModule {
         BitrixRepositoryImpl(bitrixApi, database.addressDao())
     }
 
+    fun getVersionCode(): Int {
+        return try {
+            val pInfo = appContext.packageManager.getPackageInfo(appContext.packageName, 0)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                pInfo.longVersionCode.toInt()
+            } else {
+                @Suppress("DEPRECATION")
+                pInfo.versionCode
+            }
+        } catch (e: Exception) {
+            1
+        }
+    }
+
     fun scheduleSync(forceManual: Boolean = false) {
         // Мы убрали ранний выход, теперь SyncWorker сам решит,
         // что отправлять (метаданные), а что оставить (фото).
@@ -118,6 +132,7 @@ class MainViewModelFactory(
             AppModule.repository, 
             AppModule.sessionManager, 
             AppModule.locationClient,
+            AppModule.getVersionCode(),
             displayName
         ) as T
     }
