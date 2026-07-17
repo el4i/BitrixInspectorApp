@@ -13,7 +13,7 @@ android {
         applicationId = "com.imedia.inspector"
         minSdk = 24
         targetSdk = 34
-        versionCode = 3
+        versionCode = 6
         versionName = "1.0"
     }
 
@@ -64,6 +64,9 @@ dependencies {
 
     // Google Play Services для локации
     implementation("com.google.android.gms:play-services-location:21.3.0")
+
+    // EXIF для работы с фото
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

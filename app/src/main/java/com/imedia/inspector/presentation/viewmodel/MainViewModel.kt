@@ -14,6 +14,7 @@ import com.imedia.inspector.domain.model.InspectorMode
 import com.imedia.inspector.domain.model.UserRole
 import com.imedia.inspector.domain.model.WorkerMode
 import com.imedia.inspector.util.FileNameUtils
+import com.imedia.inspector.util.ImageUtils
 import com.imedia.inspector.util.SessionManager
 import com.imedia.inspector.util.LocationClient
 import com.imedia.inspector.di.AppModule
@@ -186,7 +187,7 @@ class MainViewModel(
                 if (cached != null) {
                     contact = cached
                     loadForRole(cached)
-                    _events.value = "Работаем в оффлайне"
+                    // Убираем тост "Работаем в оффлайне", чтобы не мешал при авто-проверках
                 } else {
                     // Вместо экрана ошибки возвращаем на логин или NeedRegistration
                     _events.value = "Ошибка: ${e.message ?: "Нет интернета"}"
@@ -438,13 +439,16 @@ class MainViewModel(
         }
     }
 
-    fun uploadInspectorPhoto(photoFile: File) {
-        val current = (_uiState.value as? AppScreenState.InspectorFlow) ?: return
-        val item = current.selected ?: return
+    fun uploadInspectorPhoto(item: AddressItem, photoFile: File) {
         val c = contact ?: return
         viewModelScope.launch {
             try {
-                println("DEBUG_B24: Запрос GPS координат...")
+                // Сжимаем фото перед обработкой
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    ImageUtils.compressImage(photoFile)
+                }
+
+                println("DEBUG_B24: Запрос GPS координат для ${item.id}...")
                 val location = locationClient.getCurrentLocation()
                 
                 if (location == null) {
@@ -467,17 +471,12 @@ class MainViewModel(
                     latitude = location?.latitude,
                     longitude = location?.longitude
                 ))
-                _events.value = "Фото сохранено."
                 
-                // МГНОВЕННОЕ ОБНОВЛЕНИЕ СПИСКА В UI
-                val list = sortAddresses(repository.getAllAddresses(c.route, false, forceRefresh = false))
-                val currentRole = _uiState.value
-                if (currentRole is AppScreenState.InspectorFlow) {
-                    _uiState.value = currentRole.copy(addresses = list)
-                }
-
-                // После сохранения всегда выходим в список
+                // СНАЧАЛА выходим в список, чтобы UI не завис на деталях
                 deselectAddress()
+                
+                // ЗАТЕМ уведомляем об успехе
+                _events.value = "Фото сохранено (ожидает выгрузки)."
             } catch (e: Exception) {
                 _events.value = "Ошибка: ${e.message}"
             }
@@ -530,13 +529,16 @@ class MainViewModel(
         }
     }
 
-    fun uploadWorkerPhoto(photoFile: File) {
-        val current = (_uiState.value as? AppScreenState.WorkerFlow) ?: return
-        val item = current.selected ?: return
+    fun uploadWorkerPhoto(item: AddressItem, photoFile: File) {
         val c = contact ?: return
         viewModelScope.launch {
             try {
-                println("DEBUG_B24: Запрос GPS координат...")
+                // Сжимаем фото перед обработкой
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    ImageUtils.compressImage(photoFile)
+                }
+
+                println("DEBUG_B24: Запрос GPS координат для ремонта ${item.id}...")
                 val location = locationClient.getCurrentLocation()
                 
                 if (location == null) {
@@ -559,16 +561,11 @@ class MainViewModel(
                     latitude = location?.latitude,
                     longitude = location?.longitude
                 ))
-                _events.value = "Фото сохранено."
-
-                val list = sortAddresses(repository.getAllRepairAddresses(c.route, false, forceRefresh = false))
-                val flow = _uiState.value as? AppScreenState.WorkerFlow
-                if (flow != null) {
-                    _uiState.value = flow.copy(addresses = list)
-                }
-
-                // После сохранения всегда выходим в список
+                
+                // СНАЧАЛА выходим в список
                 deselectAddress()
+                
+                _events.value = "Ремонт сохранен (ожидает выгрузки)."
             } catch (e: Exception) {
                 _events.value = "Ошибка: ${e.message}"
             }

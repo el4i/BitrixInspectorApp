@@ -37,30 +37,26 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.LocationSettingsRequest
 import com.google.android.gms.location.Priority
+import androidx.compose.runtime.saveable.rememberSaveable
 import android.os.Environment
 import android.media.MediaScannerConnection
 import java.io.File
 
-/**
- * Заменяет прием фото через MAX (attachments[].type == 'image') на системный вызов камеры,
- * как требует ТЗ: rememberLauncherForActivityResult(TakePicture()).
- *
- * Возвращает готовый java.io.File с полноразмерным снимком через onPhotoTaken.
- */
 @Composable
 fun CameraCaptureButton(
     context: Context,
     label: String = "Сделать фото",
     onPhotoTaken: (File) -> Unit
 ) {
-    var pendingFile by remember { mutableStateOf<File?>(null) }
-    var previewUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingFilePath by rememberSaveable { mutableStateOf<String?>(null) }
+    var previewUri by rememberSaveable { mutableStateOf<Uri?>(null) }
 
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
-        val file = pendingFile
-        if (success && file != null) {
+        val path = pendingFilePath
+        if (success && path != null) {
+            val file = File(path)
             // Уведомляем систему о новом файле, чтобы он появился в галерее
             MediaScannerConnection.scanFile(context, arrayOf(file.absolutePath), null, null)
             previewUri = Uri.fromFile(file)
@@ -72,9 +68,8 @@ fun CameraCaptureButton(
         contract = ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            // Если пользователь нажал "ОК" в системном окне GPS
             val file = createTempImageFile(context)
-            pendingFile = file
+            pendingFilePath = file.absolutePath
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
             launcher.launch(uri)
         } else {
@@ -89,11 +84,11 @@ fun CameraCaptureButton(
 
         if (isGpsEnabled) {
             val file = createTempImageFile(context)
-            pendingFile = file
+            pendingFilePath = file.absolutePath
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
             launcher.launch(uri)
         } else {
-            // Пытаемся принудительно запросить включение GPS через системный диалог
+            // ... (запрос включения GPS)
             val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1000).build()
             val builder = LocationSettingsRequest.Builder().addLocationRequest(locationRequest)
             val client = LocationServices.getSettingsClient(context)

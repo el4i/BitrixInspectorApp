@@ -59,7 +59,7 @@ interface AddressDao {
     suspend fun getConfig(id: String): UserConfigEntity?
 }
 
-@Database(entities = [AddressEntity::class, PendingUploadEntity::class, UserConfigEntity::class], version = 8)
+@Database(entities = [AddressEntity::class, PendingUploadEntity::class, UserConfigEntity::class], version = 10)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun addressDao(): AddressDao

@@ -66,6 +66,7 @@ class SyncWorker(
                 val fakeItem = AddressItem(
                     id = pending.addressId,
                     name = pending.addressName, // Теперь используем сохраненное имя
+                    code = pending.addressCode,
                     property107 = pending.property107,
                     status = null,
                     routeCodes = com.imedia.inspector.data.local.Converters().toStringList(pending.routeJson), // ВОССТАНАВЛИВАЕМ МАРШРУТ

@@ -52,6 +52,7 @@ data class Contact(
 data class AddressItem(
     val id: String,
     val name: String,
+    val code: String?,
     val property107: String?,
     val status: AddressStatus?,
     val routeCodes: List<String>,

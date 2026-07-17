@@ -11,31 +11,33 @@ import com.google.gson.reflect.TypeToken
 data class AddressEntity(
     @PrimaryKey val id: String,
     val name: String,
+    val code: String?,
     val property107: String?,
     val status: AddressStatus?,
     val routeCodes: List<String>,
     val handledByContactId: String?,
     val breakageReason: String?,
     val timestampX: String?,
-    val isWorkerList: Boolean, // true если из getRepairList, false если из getAddressList
-    val localPhotoPath: String? = null, // Путь к фото в памяти телефона
-    val latitude: Double? = null,
-    val longitude: Double? = null,
-    val isPendingSync: Boolean = false
+    val isWorkerList: Boolean,
+    val localPhotoPath: String?,
+    val latitude: Double?,
+    val longitude: Double?,
+    val isPendingSync: Boolean
 )
 
 @Entity(tableName = "pending_uploads")
 data class PendingUploadEntity(
     @PrimaryKey(autoGenerate = true) val localId: Long = 0,
     val addressId: String,
-    val addressName: String, 
-    val status: AddressStatus,
-    val routeJson: String = "[]", // Перенесли ниже и добавили значение по умолчанию
-    val handledByContactId: String?,
-    val breakageReason: String?,
-    val fileName: String?,
-    val photoFilePath: String?, // путь к локальному файлу
-    val property107: String? = null, // Порядковый номер
+    val addressName: String = "", 
+    val addressCode: String? = null,
+    val status: AddressStatus = AddressStatus.NEW,
+    val routeJson: String = "[]",
+    val handledByContactId: String? = null,
+    val breakageReason: String? = null,
+    val fileName: String? = null,
+    val photoFilePath: String? = null,
+    val property107: String? = null,
     val latitude: Double? = null,
     val longitude: Double? = null
 )

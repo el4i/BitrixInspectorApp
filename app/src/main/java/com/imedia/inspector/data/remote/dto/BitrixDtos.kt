@@ -43,6 +43,7 @@ data class ContactDto(
 data class ListElementDto(
     @SerializedName("ID") val id: String,
     @SerializedName("NAME") val name: String? = null,
+    @SerializedName("CODE") val code: String? = null,
     @SerializedName("PROPERTY_107") val property107: Any? = null,
     @SerializedName("PROPERTY_109") val property109: Any? = null,
     @SerializedName("PROPERTY_111") val property111: Any? = null,

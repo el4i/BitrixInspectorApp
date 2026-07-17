@@ -158,6 +158,11 @@ class BitrixRepositoryImpl(
                     "IBLOCK_TYPE_ID" to IBLOCK_TYPE_LISTS,
                     "IBLOCK_ID" to IBLOCK_ID_LISTS,
                     "ELEMENT_ORDER" to mapOf("PROPERTY_109" to "ASC", "PROPERTY_107" to "ASC"),
+                    "SELECT" to listOf(
+                        "ID", "NAME", "CODE", "TIMESTAMP_X", 
+                        "PROPERTY_107", "PROPERTY_109", "PROPERTY_111", 
+                        "PROPERTY_113", "PROPERTY_115", "PROPERTY_119"
+                    ),
                     "FILTER" to mapOf(
                         "=PROPERTY_111" to route,
                         "=PROPERTY_109" to listOf(status)
@@ -197,6 +202,7 @@ class BitrixRepositoryImpl(
                 PendingUploadEntity(
                     addressId = item.id,
                     addressName = item.name,
+                    addressCode = item.code,
                     routeJson = Converters().fromStringList(item.routeCodes), // СОХРАНЯЕМ МАРШРУТ
                     status = patch.status,
                     handledByContactId = patch.handledByContactId,
@@ -248,10 +254,15 @@ class BitrixRepositoryImpl(
         // 1. Название — обязательно для B24
         fields["NAME"] = item.name
         
-        // 2. Статус — то, что мы меняем
+        // 2. Код — берем из Битрикса и возвращаем как есть
+        if (!item.code.isNullOrBlank()) {
+            fields["CODE"] = item.code
+        }
+        
+        // 3. Статус — то, что мы меняем
         fields["PROPERTY_109"] = patch.status.code
         
-        // 3. Маршрут — ПЕРЕДАЕМ ВСЕГДА, чтобы не затереть в Битриксе
+        // 4. Маршрут — ПЕРЕДАЕМ ВСЕГДА, чтобы не затереть в Битриксе
         if (item.routeCodes.isNotEmpty()) {
             fields["PROPERTY_111"] = item.routeCodes
         }
@@ -324,12 +335,14 @@ class BitrixRepositoryImpl(
             listOf(AddressStatus.SENT_TO_REPAIR.code, AddressStatus.SKIPPED_WORKER.code, AddressStatus.REPAIR_DONE.code)
         } else {
             // Монтажнику нужны: Новые, Пропущенные, Загруженные И те, что в Ремонте (R и R1)
+            // Добавляем RS (пропущено ремонтником), чтобы монтажник видел проблемные точки
             listOf(
                 AddressStatus.NEW.code, 
                 AddressStatus.SKIPPED_INSPECTOR.code, 
                 AddressStatus.PHOTO_UPLOADED.code, 
                 AddressStatus.SENT_TO_REPAIR.code,
-                AddressStatus.REPAIR_DONE.code
+                AddressStatus.REPAIR_DONE.code,
+                AddressStatus.SKIPPED_WORKER.code
             )
         }
 
@@ -338,8 +351,7 @@ class BitrixRepositoryImpl(
 
         for (status in statusList) {
             try {
-                println("DEBUG_B24: Запрос адресов со статусом $status для маршрута $route")
-                val routeFilter = if (route.size == 1) route[0] else route
+                println("DEBUG_B24: Запрос адресов со статусом $status для маршрутов $route")
                 
                 var start: Int? = 0
                 while (start != null) {
@@ -348,8 +360,13 @@ class BitrixRepositoryImpl(
                             "IBLOCK_TYPE_ID" to IBLOCK_TYPE_LISTS,
                             "IBLOCK_ID" to IBLOCK_ID_LISTS,
                             "ELEMENT_ORDER" to mapOf("PROPERTY_109" to "ASC", "PROPERTY_107" to "ASC"),
+                            "SELECT" to listOf(
+                                "ID", "NAME", "CODE", "TIMESTAMP_X", 
+                                "PROPERTY_107", "PROPERTY_109", "PROPERTY_111", 
+                                "PROPERTY_113", "PROPERTY_115", "PROPERTY_119"
+                            ),
                             "FILTER" to mapOf(
-                                "PROPERTY_111" to routeFilter,
+                                "PROPERTY_111" to route, // Всегда передаем массив
                                 "PROPERTY_109" to status
                             ),
                             "start" to start
@@ -649,6 +666,7 @@ private fun Any?.toB24List(): List<String> {
 private fun ListElementDto.toDomain(): AddressItem = AddressItem(
     id = id,
     name = name.orEmpty(),
+    code = code,
     property107 = property107.toB24String(),
     status = AddressStatus.entries.firstOrNull { it.code == property109.toB24String() },
     routeCodes = property111.toB24List(),
@@ -656,12 +674,14 @@ private fun ListElementDto.toDomain(): AddressItem = AddressItem(
     breakageReason = property119.toB24String(),
     timestampX = timestampX,
     latitude = null, // Эти данные мы не запрашиваем при чтении, только пишем
-    longitude = null
+    longitude = null,
+    isPendingSync = false
 )
 
 private fun ListElementDto.toEntity(isWorker: Boolean): AddressEntity = AddressEntity(
     id = id,
     name = name.orEmpty(),
+    code = code,
     property107 = property107.toB24String(),
     status = AddressStatus.entries.firstOrNull { it.code == property109.toB24String() },
     routeCodes = property111.toB24List(),
@@ -669,6 +689,7 @@ private fun ListElementDto.toEntity(isWorker: Boolean): AddressEntity = AddressE
     breakageReason = property119.toB24String(),
     timestampX = timestampX,
     isWorkerList = isWorker,
+    localPhotoPath = null,
     latitude = null,
     longitude = null,
     isPendingSync = false
@@ -677,6 +698,7 @@ private fun ListElementDto.toEntity(isWorker: Boolean): AddressEntity = AddressE
 private fun AddressEntity.toDomain(): AddressItem = AddressItem(
     id = id,
     name = name,
+    code = code,
     property107 = property107,
     status = status,
     routeCodes = routeCodes,
