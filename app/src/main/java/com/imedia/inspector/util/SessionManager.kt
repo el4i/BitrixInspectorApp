@@ -26,5 +26,34 @@ class SessionManager(context: Context) {
         prefs.edit().putBoolean("auto_upload", enabled).apply()
     }
 
+    fun isAccessibleModeEnabled(): Boolean {
+        return prefs.getBoolean("accessible_mode", false)
+    }
+
+    fun setAccessibleModeEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("accessible_mode", enabled).apply()
+    }
+
+    // --- Поля для восстановления после вылета (Low RAM) ---
+    fun savePendingPhotoTask(addressId: String, filePath: String, isWorker: Boolean) {
+        prefs.edit()
+            .putString("pending_addr_id", addressId)
+            .putString("pending_file_path", filePath)
+            .putBoolean("pending_is_worker", isWorker)
+            .apply()
+    }
+
+    fun getPendingPhotoAddrId(): String? = prefs.getString("pending_addr_id", null)
+    fun getPendingPhotoPath(): String? = prefs.getString("pending_file_path", null)
+    fun isPendingPhotoWorker(): Boolean = prefs.getBoolean("pending_is_worker", false)
+
+    fun clearPendingPhotoTask() {
+        prefs.edit()
+            .remove("pending_addr_id")
+            .remove("pending_file_path")
+            .remove("pending_is_worker")
+            .apply()
+    }
+
     fun isLoggedIn(): Boolean = getUserId() != null
 }

@@ -15,6 +15,7 @@ import com.imedia.inspector.domain.model.UserRole
 import com.imedia.inspector.domain.model.WorkerMode
 import com.imedia.inspector.util.FileNameUtils
 import com.imedia.inspector.util.ImageUtils
+import com.imedia.inspector.util.RemoteLogger
 import com.imedia.inspector.util.SessionManager
 import com.imedia.inspector.util.LocationClient
 import com.imedia.inspector.di.AppModule
@@ -44,6 +45,9 @@ class MainViewModel(
 
     private val _isAutoUpload = MutableStateFlow(sessionManager.isAutoUploadEnabled())
     val isAutoUpload: StateFlow<Boolean> = _isAutoUpload.asStateFlow()
+
+    private val _isAccessibleMode = MutableStateFlow(sessionManager.isAccessibleModeEnabled())
+    val isAccessibleMode: StateFlow<Boolean> = _isAccessibleMode.asStateFlow()
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
@@ -167,6 +171,9 @@ class MainViewModel(
                 val c = repository.getContact(userId)
                 contact = c
                 if (c.isRegistered) {
+                    RemoteLogger.init(c.isLoggingEnabled, c.fullName)
+                    RemoteLogger.log("Приложение запущено, пользователь авторизован")
+
                     repository.saveContactToCache(userId, c)
                     repository.closeLeadIfExists(userId)
                     loadForRole(c)
@@ -310,6 +317,9 @@ class MainViewModel(
     }
 
     private suspend fun loadForRole(c: Contact) {
+        // Проверяем автоподхват ПОСЛЕ загрузки роли, но ДО загрузки списка
+        checkAndRecoverPhoto()
+
         startObserving(c.role == UserRole.WORKER)
         when (c.role) {
             UserRole.MONTAJNIK -> loadInspectorAddress(skipped = false)
@@ -356,6 +366,49 @@ class MainViewModel(
         } else if (current is AppScreenState.WorkerFlow) {
             _uiState.value = current.copy(selected = null, mode = WorkerMode.AWAITING_PHOTO)
         }
+    }
+
+    // Сохраняем "намерение" сфотографировать, чтобы восстановиться при Low RAM
+    fun prepareForPhoto(addressId: String, isWorker: Boolean) {
+        // Мы не знаем точный путь заранее, но камера создаст его. 
+        // Мы просто помечаем, КТО в процессе.
+        sessionManager.savePendingPhotoTask(addressId, "", isWorker)
+        RemoteLogger.log("Подготовка к съемке для адреса $addressId. Состояние сохранено.")
+    }
+
+    private suspend fun checkAndRecoverPhoto() {
+        val addrId = sessionManager.getPendingPhotoAddrId() ?: return
+        val isWorker = sessionManager.isPendingPhotoWorker()
+        
+        // Ищем в папке самое свежее фото
+        val dir = File(
+            android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES),
+            "iMedia_Inspector"
+        )
+        if (!dir.exists()) return
+
+        val latestFile = dir.listFiles()?.filter { it.extension.lowercase() == "jpg" }
+            ?.maxByOrNull { it.lastModified() }
+
+        if (latestFile != null) {
+            // Если файлу меньше 5 минут, считаем что это наше "вылетевшее" фото
+            val diff = System.currentTimeMillis() - latestFile.lastModified()
+            if (diff < 5 * 60 * 1000) {
+                RemoteLogger.log("ОБНАРУЖЕН ВЫЛЕТ: Автоподхват фото для адреса $addrId. Файл: ${latestFile.name}")
+                
+                // Нам нужен объект AddressItem. Ищем его в базе.
+                val item = repository.getAllAddresses(contact?.route ?: emptyList(), false).find { it.id == addrId }
+                    ?: repository.getAllRepairAddresses(contact?.route ?: emptyList(), false).find { it.id == addrId }
+
+                if (item != null) {
+                    if (isWorker) uploadWorkerPhoto(item, latestFile) 
+                    else uploadInspectorPhoto(item, latestFile)
+                }
+            }
+        }
+        
+        // В любом случае чистим задачу, чтобы не зациклиться
+        sessionManager.clearPendingPhotoTask()
     }
 
     // ---------------------------------------------------------------------
@@ -443,25 +496,29 @@ class MainViewModel(
         val c = contact ?: return
         viewModelScope.launch {
             try {
+                RemoteLogger.log("Начало обработки фото монтажником для адреса ${item.id} (${item.name}). Файл: ${photoFile.length()} байт")
+                
                 // Сжимаем фото перед обработкой
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     ImageUtils.compressImage(photoFile)
                 }
-
-                println("DEBUG_B24: Запрос GPS координат для ${item.id}...")
+                RemoteLogger.log("Фото сжато. Новый размер: ${photoFile.length()} байт")
+                
+                RemoteLogger.log("Запрос GPS координат...")
                 val location = locationClient.getCurrentLocation()
+                RemoteLogger.log("GPS получен: ${location?.latitude}, ${location?.longitude}")
                 
                 if (location == null) {
                     _events.value = "Включите GPS для записи координат!"
-                    println("DEBUG_B24: GPS результат: null (выключен или нет сигнала)")
-                } else {
-                    println("DEBUG_B24: GPS результат: lat=${location.latitude}, lon=${location.longitude}")
                 }
                 
+                RemoteLogger.log("Подготовка данных для БД (Base64)...")
                 val ext = FileNameUtils.extensionFromFile(photoFile)
                 val fileName = FileNameUtils.buildFileName(item.routeCodes.firstOrNull().orEmpty(), item.name, ext)
                 val base64 = FileNameUtils.fileToBase64(photoFile)
+                RemoteLogger.log("Base64 готов (${base64.length} символов)")
                 
+                RemoteLogger.log("Запись в локальную БД...")
                 repository.updateAddress(item, AddressUpdatePatch(
                     status = AddressStatus.PHOTO_UPLOADED,
                     handledByContactId = c.id,
@@ -471,6 +528,7 @@ class MainViewModel(
                     latitude = location?.latitude,
                     longitude = location?.longitude
                 ))
+                RemoteLogger.log("Запись в БД успешна. Выход в список.")
                 
                 // СНАЧАЛА выходим в список, чтобы UI не завис на деталях
                 deselectAddress()
@@ -478,6 +536,8 @@ class MainViewModel(
                 // ЗАТЕМ уведомляем об успехе
                 _events.value = "Фото сохранено (ожидает выгрузки)."
             } catch (e: Exception) {
+                RemoteLogger.log("КРИТИЧЕСКАЯ ОШИБКА МОНТАЖНИКА: ${e.message}")
+                e.printStackTrace()
                 _events.value = "Ошибка: ${e.message}"
             }
         }
@@ -533,25 +593,29 @@ class MainViewModel(
         val c = contact ?: return
         viewModelScope.launch {
             try {
+                RemoteLogger.log("Начало обработки фото ремонтником для адреса ${item.id} (${item.name}). Файл: ${photoFile.length()} байт")
+                
                 // Сжимаем фото перед обработкой
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     ImageUtils.compressImage(photoFile)
                 }
-
-                println("DEBUG_B24: Запрос GPS координат для ремонта ${item.id}...")
+                RemoteLogger.log("Фото ремонта сжато. Новый размер: ${photoFile.length()} байт")
+                
+                RemoteLogger.log("Ремонтник: Запрос GPS координат...")
                 val location = locationClient.getCurrentLocation()
+                RemoteLogger.log("Ремонтник: GPS получен: ${location?.latitude}, ${location?.longitude}")
                 
                 if (location == null) {
                     _events.value = "Включите GPS для записи координат!"
-                    println("DEBUG_B24: GPS результат: null (выключен или нет сигнала)")
-                } else {
-                    println("DEBUG_B24: GPS результат: lat=${location.latitude}, lon=${location.longitude}")
                 }
                 
+                RemoteLogger.log("Ремонтник: Подготовка данных для БД (Base64)...")
                 val ext = FileNameUtils.extensionFromFile(photoFile)
                 val fileName = FileNameUtils.buildFileName(item.routeCodes.firstOrNull().orEmpty(), item.name, ext)
                 val base64 = FileNameUtils.fileToBase64(photoFile)
+                RemoteLogger.log("Ремонтник: Base64 готов (${base64.length} символов)")
                 
+                RemoteLogger.log("Ремонтник: Запись в локальную БД...")
                 repository.updateAddress(item, AddressUpdatePatch(
                     status = AddressStatus.REPAIR_DONE,
                     handledByContactId = c.id,
@@ -561,12 +625,15 @@ class MainViewModel(
                     latitude = location?.latitude,
                     longitude = location?.longitude
                 ))
+                RemoteLogger.log("Ремонтник: Запись в БД успешна. Выход в список.")
                 
                 // СНАЧАЛА выходим в список
                 deselectAddress()
                 
                 _events.value = "Ремонт сохранен (ожидает выгрузки)."
             } catch (e: Exception) {
+                RemoteLogger.log("КРИТИЧЕСКАЯ ОШИБКА РЕМОНТНИКА: ${e.message}")
+                e.printStackTrace()
                 _events.value = "Ошибка: ${e.message}"
             }
         }
@@ -581,6 +648,11 @@ class MainViewModel(
         if (enabled) {
             AppModule.scheduleSync()
         }
+    }
+
+    fun toggleAccessibleMode(enabled: Boolean) {
+        sessionManager.setAccessibleModeEnabled(enabled)
+        _isAccessibleMode.value = enabled
     }
 
     fun manualSync() {

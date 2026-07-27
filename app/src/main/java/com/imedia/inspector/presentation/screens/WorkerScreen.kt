@@ -2,6 +2,8 @@ package com.imedia.inspector.presentation.screens
 
 import android.content.Context
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -53,8 +55,11 @@ fun WorkerScreen(
     onManualSync: () -> Unit,
     isAutoUpload: Boolean,
     onToggleAutoUpload: (Boolean) -> Unit,
+    isAccessibleMode: Boolean,
+    onToggleAccessibleMode: (Boolean) -> Unit,
     searchQuery: String,
-    onSearchQueryChange: (String) -> Unit
+    onSearchQueryChange: (String) -> Unit,
+    onPreparePhoto: (String) -> Unit
 ) {
     val pagerState = rememberPagerState(initialPage = selectedTab) { 3 }
 
@@ -131,6 +136,20 @@ fun WorkerScreen(
                                 },
                                 onClick = { }
                             )
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Упрощенный режим")
+                                        Spacer(Modifier.weight(1f))
+                                        Switch(checked = isAccessibleMode, onCheckedChange = { checked ->
+                                            onToggleAccessibleMode(checked)
+                                            showMenu = false
+                                        })
+                                    }
+                                },
+                                onClick = { }
+                            )
                         }
                     }
                 }
@@ -195,6 +214,7 @@ fun WorkerScreen(
                         padding = PaddingValues(0.dp),
                         addresses = filteredList,
                         selectedTab = page,
+                        isAccessibleMode = isAccessibleMode,
                         onSelect = onSelect,
                         onLoadAddresses = onLoadAddresses,
                         onManualSync = onManualSync
@@ -207,7 +227,9 @@ fun WorkerScreen(
                 padding = padding,
                 context = context,
                 address = selected,
+                isAccessibleMode = isAccessibleMode,
                 onSkipAddress = onSkipAddress,
+                onPrepare = { onPreparePhoto(selected.id) },
                 onPhotoTaken = onPhotoTaken
             )
         }
@@ -219,6 +241,7 @@ private fun WorkerListContent(
     padding: PaddingValues,
     addresses: List<AddressItem>,
     selectedTab: Int,
+    isAccessibleMode: Boolean,
     onSelect: (AddressItem) -> Unit,
     onLoadAddresses: () -> Unit,
     onManualSync: () -> Unit
@@ -227,14 +250,18 @@ private fun WorkerListContent(
         if (selectedTab == 2 && addresses.any { !it.localPhotoPath.isNullOrBlank() }) {
             Button(
                 onClick = onManualSync,
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                modifier = Modifier.fillMaxWidth().padding(if (isAccessibleMode) 24.dp else 16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = if (isAccessibleMode) androidx.compose.ui.graphics.Color.Black else MaterialTheme.colorScheme.primary),
+                shape = if (isAccessibleMode) androidx.compose.foundation.shape.RoundedCornerShape(0.dp) else ButtonDefaults.shape
             ) {
-                Icon(Icons.Default.CloudUpload, contentDescription = null)
+                Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = if (isAccessibleMode) Modifier.size(32.dp) else Modifier)
                 Spacer(Modifier.width(8.dp))
-                Text("ВЫГРУЗИТЬ ФОТООТЧЕТ")
+                Text(
+                    text = "ВЫГРУЗИТЬ ФОТООТЧЕТ",
+                    style = if (isAccessibleMode) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.labelLarge
+                )
             }
-            HorizontalDivider()
+            HorizontalDivider(thickness = if (isAccessibleMode) 2.dp else 1.dp)
         }
 
         if (addresses.isEmpty()) {
@@ -256,6 +283,7 @@ private fun WorkerListContent(
                     WorkerAddressCard(
                         item = item, 
                         showPendingStatus = selectedTab == 2,
+                        isAccessibleMode = isAccessibleMode,
                         onClick = { onSelect(item) }
                     )
                 }
@@ -268,6 +296,7 @@ private fun WorkerListContent(
 private fun WorkerAddressCard(
     item: AddressItem, 
     showPendingStatus: Boolean = true,
+    isAccessibleMode: Boolean = false,
     onClick: () -> Unit
 ) {
     // Синий статус показываем только для ФОТО на вкладке загрузки
@@ -277,56 +306,72 @@ private fun WorkerAddressCard(
     ElevatedCard(
         onClick = onClick,
         modifier = Modifier
-            .fillMaxWidth(),
+            .fillMaxWidth()
+            .then(if (isAccessibleMode) Modifier.border(2.dp, androidx.compose.ui.graphics.Color.Black, MaterialTheme.shapes.medium) else Modifier),
         colors = when {
+            isAccessibleMode -> CardDefaults.elevatedCardColors(containerColor = androidx.compose.ui.graphics.Color.White)
             isUploaded -> CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
             isPending -> CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
             else -> CardDefaults.elevatedCardColors()
-        }
+        },
+        shape = MaterialTheme.shapes.medium
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(if (isAccessibleMode) 20.dp else 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = when {
-                    isUploaded -> Icons.Default.CheckCircle
-                    isPending -> Icons.Default.CloudUpload
-                    else -> Icons.Default.Build
-                },
-                contentDescription = null,
-                tint = when {
-                    isUploaded -> MaterialTheme.colorScheme.primary
-                    isPending -> MaterialTheme.colorScheme.secondary
-                    else -> MaterialTheme.colorScheme.outline
-                }
-            )
-            Spacer(Modifier.width(16.dp))
+            if (!isAccessibleMode) {
+                Icon(
+                    imageVector = when {
+                        isUploaded -> Icons.Default.CheckCircle
+                        isPending -> Icons.Default.CloudUpload
+                        else -> Icons.Default.Build
+                    },
+                    contentDescription = null,
+                    tint = when {
+                        isUploaded -> MaterialTheme.colorScheme.primary
+                        isPending -> MaterialTheme.colorScheme.secondary
+                        else -> MaterialTheme.colorScheme.outline
+                    }
+                )
+                Spacer(Modifier.width(16.dp))
+            }
             Column {
                 Text(
                     text = item.name, 
-                    style = MaterialTheme.typography.titleMedium, 
-                    fontWeight = FontWeight.Bold,
-                    color = when {
+                    style = if (isAccessibleMode) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleMedium, 
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (isAccessibleMode) androidx.compose.ui.graphics.Color.Black else when {
                         isUploaded -> MaterialTheme.colorScheme.onPrimaryContainer
                         isPending -> MaterialTheme.colorScheme.onSecondaryContainer
                         else -> MaterialTheme.colorScheme.onSurface
                     }
                 )
-                Text(
-                    text = "Маршрут: ${item.routeCodes.firstOrNull() ?: ""} | № ${item.property107 ?: ""}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                if (isAccessibleMode) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "Маршрут: ${item.routeCodes.firstOrNull() ?: ""}",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = androidx.compose.ui.graphics.Color.Black
+                    )
+                } else {
+                    Text(
+                        text = "Маршрут: ${item.routeCodes.firstOrNull() ?: ""} | № ${item.property107 ?: ""}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
                 when {
                     isUploaded -> {
-                        Text("Ремонт подтвержден (в Битриксе)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                        Text(if (isAccessibleMode) "РЕМОНТ ПОДТВЕРЖДЕН" else "Ремонт подтвержден (в Битриксе)", style = if (isAccessibleMode) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodySmall, color = if (isAccessibleMode) androidx.compose.ui.graphics.Color.Black else MaterialTheme.colorScheme.primary)
                     }
                     isPending -> {
-                        Text("Ожидает интернета", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                        Text(if (isAccessibleMode) "! ОЖИДАЕТ ОТПРАВКИ !" else "Ожидает интернета", style = if (isAccessibleMode) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodySmall, color = if (isAccessibleMode) androidx.compose.ui.graphics.Color.Black else MaterialTheme.colorScheme.secondary)
                     }
                     else -> item.breakageReason?.let {
-                        Text("Поломка: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                        Text("${if (isAccessibleMode) "ПОЛОМКА: " else "Поломка: "}$it", style = if (isAccessibleMode) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodySmall, color = if (isAccessibleMode) androidx.compose.ui.graphics.Color.Black else MaterialTheme.colorScheme.error)
                     }
                 }
             }
@@ -339,7 +384,9 @@ private fun WorkerDetailContent(
     padding: PaddingValues,
     context: Context,
     address: AddressItem,
+    isAccessibleMode: Boolean,
     onSkipAddress: () -> Unit,
+    onPrepare: () -> Unit,
     onPhotoTaken: (File) -> Unit
 ) {
     // Для рабочего: скрываем кнопки только если ремонт выполнен (фото в очереди или уже на сервере)
@@ -349,17 +396,28 @@ private fun WorkerDetailContent(
         modifier = Modifier
             .fillMaxSize()
             .padding(padding)
-            .padding(24.dp)
+            .padding(if (isAccessibleMode) 16.dp else 24.dp)
+            .then(if (isAccessibleMode) Modifier.background(androidx.compose.ui.graphics.Color.White) else Modifier)
     ) {
-        Text("Ремонт по адресу", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary)
-        Text(address.name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
+        Text(
+            "Ремонт по адресу", 
+            style = if (isAccessibleMode) MaterialTheme.typography.titleLarge else MaterialTheme.typography.labelLarge, 
+            color = if (isAccessibleMode) androidx.compose.ui.graphics.Color.Black else MaterialTheme.colorScheme.secondary
+        )
+        Text(
+            address.name, 
+            style = if (isAccessibleMode) MaterialTheme.typography.headlineLarge else MaterialTheme.typography.headlineMedium, 
+            fontWeight = FontWeight.ExtraBold,
+            color = if (isAccessibleMode) androidx.compose.ui.graphics.Color.Black else MaterialTheme.colorScheme.onSurface
+        )
         
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(24.dp))
 
         if (isDone) {
             Surface(
-                color = MaterialTheme.colorScheme.primaryContainer,
-                shape = MaterialTheme.shapes.medium
+                color = if (isAccessibleMode) androidx.compose.ui.graphics.Color.White else MaterialTheme.colorScheme.primaryContainer,
+                shape = MaterialTheme.shapes.medium,
+                border = if (isAccessibleMode) androidx.compose.foundation.BorderStroke(2.dp, androidx.compose.ui.graphics.Color.Black) else null
             ) {
                 Column(Modifier.padding(16.dp)) {
                     val statusText = if (address.isPendingSync)
@@ -367,7 +425,7 @@ private fun WorkerDetailContent(
                     else 
                         "Фото ремонта отправлено на сервер"
 
-                    Text(statusText, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text(statusText, style = MaterialTheme.typography.titleSmall, color = if (isAccessibleMode) androidx.compose.ui.graphics.Color.Black else MaterialTheme.colorScheme.onPrimaryContainer)
                     Spacer(Modifier.height(8.dp))
                     
                     if (!address.localPhotoPath.isNullOrBlank()) {
@@ -391,14 +449,16 @@ private fun WorkerDetailContent(
         } else {
             address.breakageReason?.let {
                 Surface(
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    shape = MaterialTheme.shapes.medium
+                    color = if (isAccessibleMode) androidx.compose.ui.graphics.Color.White else MaterialTheme.colorScheme.errorContainer,
+                    shape = MaterialTheme.shapes.medium,
+                    border = if (isAccessibleMode) androidx.compose.foundation.BorderStroke(2.dp, androidx.compose.ui.graphics.Color.Black) else null
                 ) {
                     Text(
                         text = "Что нужно сделать: $it",
                         modifier = Modifier.padding(16.dp),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onErrorContainer
+                        style = if (isAccessibleMode) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.bodyLarge,
+                        fontWeight = if (isAccessibleMode) FontWeight.Bold else FontWeight.Normal,
+                        color = if (isAccessibleMode) androidx.compose.ui.graphics.Color.Black else MaterialTheme.colorScheme.onErrorContainer
                     )
                 }
             }
@@ -408,15 +468,24 @@ private fun WorkerDetailContent(
             CameraCaptureButton(
                 context = context,
                 label = "Сфотографировать готовый ремонт",
+                isAccessibleMode = isAccessibleMode,
+                onPrepare = onPrepare,
                 onPhotoTaken = onPhotoTaken
             )
             
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(24.dp))
             
             OutlinedButton(
                 onClick = onSkipAddress,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Пропустить адрес") }
+                modifier = Modifier.fillMaxWidth().then(if (isAccessibleMode) Modifier.height(80.dp) else Modifier),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = if (isAccessibleMode) androidx.compose.ui.graphics.Color.Black else MaterialTheme.colorScheme.error),
+                border = if (isAccessibleMode) androidx.compose.foundation.BorderStroke(2.dp, androidx.compose.ui.graphics.Color.Black) else ButtonDefaults.outlinedButtonBorder
+            ) { 
+                Text(
+                    "Пропустить адрес",
+                    style = if (isAccessibleMode) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.labelLarge
+                ) 
+            }
         }
     }
 }

@@ -43,7 +43,9 @@ data class Contact(
     val id: String?,
     val state: String?,
     val route: List<String>,
-    val role: UserRole
+    val role: UserRole,
+    val isLoggingEnabled: Boolean = false,
+    val fullName: String = "Unknown"
 ) {
     val isRegistered: Boolean get() = !id.isNullOrEmpty()
 }

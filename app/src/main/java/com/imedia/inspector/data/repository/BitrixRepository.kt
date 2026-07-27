@@ -81,22 +81,33 @@ class BitrixRepositoryImpl(
                 "FILTER" to mapOf("UF_CRM_1784014618374" to deviceUserId),
                 "SELECT" to listOf(
                     "ID",
+                    "NAME", "LAST_NAME",
                     "UF_CRM_1784014618374",
                     "UF_CRM_1659870645432",
                     "UF_CRM_1659879474690",
-                    "UF_CRM_1662016534407"
+                    "UF_CRM_1662016534407",
+                    "UF_CRM_1784363913727"
                 )
             )
         )
         val contactDto = api.contactList(params).result?.firstOrNull()
         val roleCode = contactDto?.position.toB24String()
-        println("DEBUG_B24: Загружена роль: $roleCode")
+        
+        // Обрабатываем все варианты включения: "Y", "1" или true
+        val logVal = contactDto?.isLoggingEnabled.toB24String()
+        val isLogging = logVal == "Y" || logVal == "1"
+
+        val fullName = "${contactDto?.name ?: ""} ${contactDto?.lastName ?: ""}".trim()
+        
+        println("DEBUG_B24: Загружена роль: $roleCode, Логирование: $isLogging")
 
         return Contact(
             id = contactDto?.id,
             state = contactDto?.state.toB24String(),
             route = contactDto?.route.toB24List(),
-            role = UserRole.fromCode(roleCode)
+            role = UserRole.fromCode(roleCode),
+            isLoggingEnabled = isLogging,
+            fullName = if (fullName.isEmpty()) "ID_${contactDto?.id}" else fullName
         )
     }
 

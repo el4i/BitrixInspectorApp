@@ -33,6 +33,7 @@ fun RootScreen(context: Context, viewModel: MainViewModel) {
     val state by viewModel.uiState.collectAsState()
     val event by viewModel.events.collectAsState()
     val isAutoUpload by viewModel.isAutoUpload.collectAsState()
+    val isAccessibleMode by viewModel.isAccessibleMode.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
 
     event?.let { message ->
@@ -83,8 +84,11 @@ fun RootScreen(context: Context, viewModel: MainViewModel) {
             onManualSync = viewModel::manualSync,
             isAutoUpload = isAutoUpload,
             onToggleAutoUpload = viewModel::toggleAutoUpload,
+            isAccessibleMode = isAccessibleMode,
+            onToggleAccessibleMode = viewModel::toggleAccessibleMode,
             searchQuery = searchQuery,
-            onSearchQueryChange = viewModel::setSearchQuery
+            onSearchQueryChange = viewModel::setSearchQuery,
+            onPreparePhoto = { id -> viewModel.prepareForPhoto(id, false) }
         )
         is AppScreenState.WorkerFlow -> WorkerScreen(
             context = context,
@@ -104,8 +108,11 @@ fun RootScreen(context: Context, viewModel: MainViewModel) {
             onManualSync = viewModel::manualSync,
             isAutoUpload = isAutoUpload,
             onToggleAutoUpload = viewModel::toggleAutoUpload,
+            isAccessibleMode = isAccessibleMode,
+            onToggleAccessibleMode = viewModel::toggleAccessibleMode,
             searchQuery = searchQuery,
-            onSearchQueryChange = viewModel::setSearchQuery
+            onSearchQueryChange = viewModel::setSearchQuery,
+            onPreparePhoto = { id -> viewModel.prepareForPhoto(id, true) }
         )
         is AppScreenState.Error -> ErrorBox(
             message = s.message, 

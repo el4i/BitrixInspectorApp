@@ -16,9 +16,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,6 +48,8 @@ import java.io.File
 fun CameraCaptureButton(
     context: Context,
     label: String = "Сделать фото",
+    isAccessibleMode: Boolean = false,
+    onPrepare: () -> Unit = {},
     onPhotoTaken: (File) -> Unit
 ) {
     var pendingFilePath by rememberSaveable { mutableStateOf<String?>(null) }
@@ -121,6 +125,7 @@ fun CameraCaptureButton(
     Column {
         Button(
             onClick = {
+                onPrepare() // Сообщаем ViewModel, что мы начинаем процесс
                 val hasCameraPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
                 val hasLocationPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
@@ -136,11 +141,16 @@ fun CameraCaptureButton(
                     )
                 }
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().then(if (isAccessibleMode) Modifier.height(100.dp) else Modifier),
+            colors = if (isAccessibleMode) androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Black) else androidx.compose.material3.ButtonDefaults.buttonColors(),
+            shape = if (isAccessibleMode) androidx.compose.foundation.shape.RoundedCornerShape(0.dp) else ButtonDefaults.shape
         ) {
-            Icon(Icons.Default.CameraAlt, contentDescription = null)
-            Spacer(Modifier.padding(4.dp))
-            Text(label)
+            Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = if (isAccessibleMode) Modifier.size(32.dp) else Modifier)
+            Spacer(Modifier.padding(if (isAccessibleMode) 8.dp else 4.dp))
+            Text(
+                text = label,
+                style = if (isAccessibleMode) androidx.compose.material3.MaterialTheme.typography.headlineSmall else androidx.compose.material3.MaterialTheme.typography.labelLarge
+            )
         }
 
         previewUri?.let { uri ->

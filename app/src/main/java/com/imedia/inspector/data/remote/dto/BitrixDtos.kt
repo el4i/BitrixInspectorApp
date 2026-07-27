@@ -23,8 +23,11 @@ data class ContactDto(
     @SerializedName("ID") val id: String,
     @SerializedName("UF_CRM_1784014618374") val maxUserId: String? = null,
     @SerializedName("UF_CRM_1659870645432") val state: Any? = null,
-    @SerializedName("UF_CRM_1659879474690") val route: Any? = null, // Заменили на Any? для безопасности
-    @SerializedName("UF_CRM_1662016534407") val position: Any? = null // И здесь тоже Any?
+    @SerializedName("UF_CRM_1659879474690") val route: Any? = null,
+    @SerializedName("UF_CRM_1662016534407") val position: Any? = null,
+    @SerializedName("UF_CRM_1784363913727") val isLoggingEnabled: Any? = null,
+    @SerializedName("NAME") val name: String? = null,
+    @SerializedName("LAST_NAME") val lastName: String? = null
 )
 
 /**
